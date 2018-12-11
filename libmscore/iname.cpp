@@ -19,14 +19,27 @@
 namespace Ms {
 
 //---------------------------------------------------------
+//   longInstrumentStyle
+//---------------------------------------------------------
+
+static const ElementStyle longInstrumentStyle {
+      };
+
+//---------------------------------------------------------
+//   shortInstrumentStyle
+//---------------------------------------------------------
+
+static const ElementStyle shortInstrumentStyle {
+      };
+
+//---------------------------------------------------------
 //   InstrumentName
 //---------------------------------------------------------
 
 InstrumentName::InstrumentName(Score* s)
-   : Text(s)
+   : TextBase(s, Tid::INSTRUMENT_LONG, ElementFlag::NOTHING | ElementFlag::NOT_SELECTABLE)
       {
-      setInstrumentNameType(InstrumentNameType::SHORT);
-      setSelectable(false);
+      setInstrumentNameType(InstrumentNameType::LONG);
       }
 
 //---------------------------------------------------------
@@ -59,20 +72,27 @@ void InstrumentName::setInstrumentNameType(const QString& s)
 void InstrumentName::setInstrumentNameType(InstrumentNameType st)
       {
       _instrumentNameType = st;
-      initSubStyle(st == InstrumentNameType::SHORT ? SubStyle::INSTRUMENT_SHORT : SubStyle::INSTRUMENT_LONG);
+      if (st == InstrumentNameType::SHORT) {
+            setTid(Tid::INSTRUMENT_SHORT);
+            initElementStyle(&shortInstrumentStyle);
+            }
+      else {
+            setTid(Tid::INSTRUMENT_LONG);
+            initElementStyle(&longInstrumentStyle);
+            }
       }
 
 //---------------------------------------------------------
 //   getProperty
 //---------------------------------------------------------
 
-QVariant InstrumentName::getProperty(P_ID id) const
+QVariant InstrumentName::getProperty(Pid id) const
       {
       switch (id) {
-            case P_ID::INAME_LAYOUT_POSITION:
+            case Pid::INAME_LAYOUT_POSITION:
                   return _layoutPos;
             default:
-                  return Text::getProperty(id);
+                  return TextBase::getProperty(id);
             }
       }
 
@@ -80,22 +100,17 @@ QVariant InstrumentName::getProperty(P_ID id) const
 //   setProperty
 //---------------------------------------------------------
 
-bool InstrumentName::setProperty(P_ID id, const QVariant& v)
+bool InstrumentName::setProperty(Pid id, const QVariant& v)
       {
       bool rv = true;
       switch (id) {
-            case P_ID::INAME_LAYOUT_POSITION:
+            case Pid::INAME_LAYOUT_POSITION:
                   _layoutPos = v.toInt();
                   break;
             default:
-                  rv = Text::setProperty(id, v);
+                  rv = TextBase::setProperty(id, v);
                   break;
             }
-      StyleIdx sidx = getPropertyStyle(id);
-      if (sidx != StyleIdx::NOSTYLE) {
-            score()->undoChangeStyleVal(sidx, getProperty(id));
-            }
-      score()->setLayoutAll();
       return rv;
       }
 
@@ -103,13 +118,13 @@ bool InstrumentName::setProperty(P_ID id, const QVariant& v)
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant InstrumentName::propertyDefault(P_ID id) const
+QVariant InstrumentName::propertyDefault(Pid id) const
       {
       switch (id) {
-            case P_ID::INAME_LAYOUT_POSITION:
+            case Pid::INAME_LAYOUT_POSITION:
                   return 0;
             default:
-                  return Text::propertyDefault(id);
+                  return TextBase::propertyDefault(id);
             }
       }
 

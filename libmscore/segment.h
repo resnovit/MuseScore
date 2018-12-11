@@ -81,10 +81,10 @@ constexpr bool operator& (const SegmentType t1, const SegmentType t2) {
 //   @P tick            int               midi tick position (read only)
 //------------------------------------------------------------------------
 
-class Segment : public Element {
+class Segment final : public Element {
       SegmentType _segmentType { SegmentType::Invalid };
-      int _tick;                          // tick offset to measure
-      int _ticks;
+      int _tick = 0;                          // tick offset to measure
+      int _ticks = 0;
       Spatium _extraLeadingSpace;
       qreal _stretch;
 
@@ -126,7 +126,7 @@ class Segment : public Element {
       Segment* prevEnabled() const;
       void setPrev(Segment* e)            { _prev = e;      }
 
-      // dont stop at measure boundary:
+      // don’t stop at measure boundary:
       Segment* next1() const;
       Segment* next1enabled() const;
       Segment* next1MM() const;
@@ -187,7 +187,8 @@ class Segment : public Element {
       void setTick(int t)                        { _tick = t - parent()->tick(); }
       virtual int tick() const override          { return _tick + parent()->tick(); }
       virtual int rtick() const override         { return _tick;  } // tickposition relative to measure start
-      Fraction fpos() const;
+      Fraction rfrac() const;
+      Fraction afrac() const;
       void setRtick(int val)                     { _tick = val;   }
       int ticks() const                          { return _ticks; }
       void setTicks(int val)                     { _ticks = val;  }
@@ -197,8 +198,10 @@ class Segment : public Element {
       const std::vector<Element*>& annotations() const { return _annotations;        }
       void clearAnnotations();
       void removeAnnotation(Element* e);
-      bool findAnnotationOrElement(ElementType type, int minTrack, int maxTrack);
-      bool findAnnotation(ElementType type, int minTrack, int maxTrack);
+      bool hasAnnotationOrElement(ElementType type, int minTrack, int maxTrack) const;
+      Element* findAnnotation(ElementType type, int minTrack, int maxTrack);
+      std::vector<Element*> findAnnotations(ElementType type, int minTrack, int maxTrack);
+      bool hasElements() const;
 
 
       qreal dotPosX(int staffIdx) const          { return _dotPosX[staffIdx];  }
@@ -210,9 +213,9 @@ class Segment : public Element {
       virtual void write(XmlWriter&) const;
       virtual void read(XmlReader&);
 
-      virtual QVariant getProperty(P_ID propertyId) const;
-      virtual bool setProperty(P_ID propertyId, const QVariant&);
-      virtual QVariant propertyDefault(P_ID) const;
+      virtual QVariant getProperty(Pid propertyId) const;
+      virtual bool setProperty(Pid propertyId, const QVariant&);
+      virtual QVariant propertyDefault(Pid) const;
 
       bool operator<(const Segment&) const;
       bool operator>(const Segment&) const;
@@ -250,6 +253,7 @@ class Segment : public Element {
       qreal minLeft(const Shape&) const;
       qreal minLeft() const;
       qreal minHorizontalDistance(Segment*, bool isSystemGap) const;
+      qreal minHorizontalCollidingDistance(Segment* ns) const;
 
       // some helper function
       ChordRest* cr(int track) const        { return toChordRest(_elist[track]); }

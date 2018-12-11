@@ -20,15 +20,22 @@
 
 namespace Ms {
 
+#ifdef Q_OS_MAC
+#define CONTROL_MODIFIER Qt::AltModifier
+#else
+#define CONTROL_MODIFIER Qt::ControlModifier
+#endif
+
 #ifndef VOICES
 #define VOICES 4
 #endif
 
+class ConnectorInfoReader;
 class XmlReader;
 class XmlWriter;
 enum class SymId;
-enum class P_ID;
-enum class SubStyle;
+enum class Pid;
+enum class OffsetType : char;
 
 //---------------------------------------------------------
 //   Grip
@@ -48,34 +55,38 @@ enum class Grip {
 //---------------------------------------------------------
 
 enum class ElementFlag {
-      DROP_TARGET     = 0x00000001,
-      SELECTABLE      = 0x00000002,
-      MOVABLE         = 0x00000004,
-      SEGMENT         = 0x00000008,
-      HAS_TAG         = 0x00000010,   // true if this is a layered element
-      ON_STAFF        = 0x00000020,   // parent is Segment() type
-      SELECTED        = 0x00000040,
-      GENERATED       = 0x00000080,
-      VISIBLE         = 0x00000100,
-      AUTOPLACE       = 0x00000200,
-      SYSTEM          = 0x00000400,
+      NOTHING                = 0x00000000,
+      DROP_TARGET            = 0x00000001,
+      NOT_SELECTABLE         = 0x00000002,
+      MOVABLE                = 0x00000004,
+      COMPOSITION            = 0x00000008,       // true if element is part of another element
+      HAS_TAG                = 0x00000010,       // true if this is a layered element
+      ON_STAFF               = 0x00000020,
+      SELECTED               = 0x00000040,
+      GENERATED              = 0x00000080,
+      INVISIBLE              = 0x00000100,
+      NO_AUTOPLACE           = 0x00000200,
+      SYSTEM                 = 0x00000400,
+      PLACE_ABOVE            = 0x00000800,
+      SIZE_SPATIUM_DEPENDENT = 0x00001000,
 
       // measure flags
-      REPEAT_END      = 0x00000800,
-      REPEAT_START    = 0x00001000,
-      REPEAT_JUMP     = 0x00002000,
-      IRREGULAR       = 0x00004000,
-      LINE_BREAK      = 0x00008000,
-      PAGE_BREAK      = 0x00010000,
-      SECTION_BREAK   = 0x00020000,
-      NO_BREAK        = 0x00040000,
-      HEADER          = 0x00080000,
-      TRAILER         = 0x00100000,    // also used in segment
-      KEYSIG          = 0x00200000,
+      REPEAT_END             = 0x00002000,
+      REPEAT_START           = 0x00004000,
+      REPEAT_JUMP            = 0x00008000,
+      IRREGULAR              = 0x00010000,
+      LINE_BREAK             = 0x00020000,
+      PAGE_BREAK             = 0x00040000,
+      SECTION_BREAK          = 0x00080000,
+      NO_BREAK               = 0x00100000,
+      HEADER                 = 0x00200000,
+      TRAILER                = 0x00400000,    // also used in segment
+      KEYSIG                 = 0x00800000,
+
       // segment flags
-      ENABLED         = 0x00400000,    // used for segments
-      EMPTY           = 0x00800000,
-      WRITTEN         = 0x01000000,
+      ENABLED                = 0x01000000,    // used for segments
+      EMPTY                  = 0x02000000,
+      WRITTEN                = 0x04000000,
       };
 
 typedef QFlags<ElementFlag> ElementFlags;
@@ -115,6 +126,7 @@ class EditData {
       // drop data:
       QPointF dragOffset;
       Element* element                 { 0     };
+      Element* dropElement             { 0     };
       Fraction duration                { Fraction(1,4) };
 
       EditData(MuseScoreView* v) : view(v) {}
@@ -123,7 +135,7 @@ class EditData {
 
       ElementEditData* getData(const Element*) const;
       void addData(ElementEditData*);
-      bool control() const  { return modifiers & Qt::ControlModifier; }
+      bool control(bool textEditing = false) const;
       bool shift() const    { return modifiers & Qt::ShiftModifier; }
       bool isStartEndGrip() { return curGrip == Grip::START || curGrip == Grip::END; }
       };
@@ -138,33 +150,21 @@ class EditData {
 
 class Element : public ScoreElement {
       Element* _parent { 0 };
-      mutable ElementFlags _flags  {
-            ElementFlag::ENABLED | ElementFlag::EMPTY | ElementFlag::AUTOPLACE | ElementFlag::SELECTABLE
-            | ElementFlag::VISIBLE
-            };    // used for segments
+      mutable QRectF _bbox;       ///< Bounding box relative to _pos + _offset
+      qreal _mag;                 ///< standard magnification (derived value)
+      QPointF _pos;               ///< Reference position, relative to _parent.
+      QPointF _offset;            ///< offset from reference position, set by autoplace or user
+      int _track;                 ///< staffIdx * VOICES + voice
+      mutable ElementFlags _flags;
+                                  ///< valid after call to layout()
+      uint _tag;                  ///< tag bitmask
 
   protected:
       mutable int _z;
       QColor _color;              ///< element color attribute
 
-  public:
-      enum class Placement : char {
-            ABOVE, BELOW
-            };
-
-  private:
-      Placement _placement;
-      int _track;                 ///< staffIdx * VOICES + voice
-      qreal _mag;                 ///< standard magnification (derived value)
-      QPointF _pos;               ///< Reference position, relative to _parent.
-      QPointF _userOff;           ///< offset from normal layout position:
-      QPointF _readPos;
-      mutable QRectF _bbox;       ///< Bounding box relative to _pos + _userOff
-                                  ///< valid after call to layout()
-      uint _tag;                  ///< tag bitmask
-
    public:
-      Element(Score* s = 0);
+      Element(Score* = 0, ElementFlags = ElementFlag::NOTHING);
       Element(const Element&);
       virtual ~Element();
 
@@ -176,37 +176,44 @@ class Element : public ScoreElement {
       Element* parent() const                 { return _parent;     }
       void setParent(Element* e)              { _parent = e;        }
       Element* findMeasure();
+      const Element* findMeasure() const;
+      MeasureBase* findMeasureBase();
+      const MeasureBase* findMeasureBase() const;
+
+      virtual bool isElement() const override { return true;        }
 
       qreal spatium() const;
 
       inline void setFlag(ElementFlag f, bool v)       { if (v) _flags |= f; else _flags &= ~ElementFlags(f); }
       inline void setFlag(ElementFlag f, bool v) const { if (v) _flags |= f; else _flags &= ~ElementFlags(f); }
       inline bool flag(ElementFlag f) const            { return _flags & f; }
-      inline void setFlags(ElementFlags f)             { _flags |= f;       }
-      inline void clearFlags(ElementFlags f)           { _flags &= ~f;      }
-      inline ElementFlags flags() const                { return _flags;     }
 
       bool selected() const                   { return flag(ElementFlag::SELECTED); }
       virtual void setSelected(bool f)        { setFlag(ElementFlag::SELECTED, f);  }
 
-      bool visible() const                    { return flag(ElementFlag::VISIBLE);  }
-      virtual void setVisible(bool f)         { setFlag(ElementFlag::VISIBLE, f);   }
+      bool visible() const                    { return !flag(ElementFlag::INVISIBLE);  }
+      virtual void setVisible(bool f)         { setFlag(ElementFlag::INVISIBLE, !f);   }
 
-      Placement placement() const             { return _placement;  }
-      void setPlacement(Placement val)        { _placement = val;   }
-      void undoSetPlacement(Placement val);
-      bool placeBelow() const                 { return _placement == Placement::BELOW; }
-      bool placeAbove() const                 { return _placement == Placement::ABOVE; }
+      virtual bool sizeIsSpatiumDependent() const override { return !flag(ElementFlag::SIZE_SPATIUM_DEPENDENT); }
+      void setSizeIsSpatiumDependent(bool v)  { setFlag(ElementFlag::SIZE_SPATIUM_DEPENDENT, !v); }
+
+      Placement placement() const             { return Placement(!flag(ElementFlag::PLACE_ABOVE));  }
+      void setPlacement(Placement val)        { setFlag(ElementFlag::PLACE_ABOVE, !bool(val)); }
+      bool placeAbove() const                 { return placement() == Placement::ABOVE; }
+      bool placeBelow() const                 { return placement() == Placement::BELOW; }
 
       bool generated() const                  { return flag(ElementFlag::GENERATED);  }
       void setGenerated(bool val)             { setFlag(ElementFlag::GENERATED, val);   }
 
+      //TODO: rename to pos()
       const QPointF& ipos() const             { return _pos;                    }
-      virtual const QPointF pos() const       { return _pos + _userOff;         }
-      virtual qreal x() const                 { return _pos.x() + _userOff.x(); }
-      virtual qreal y() const                 { return _pos.y() + _userOff.y(); }
+      //TODO: rename to posWithUserOffset()
+      virtual const QPointF pos() const       { return _pos + _offset;          }
+      virtual qreal x() const                 { return _pos.x() + _offset.x(); }
+      virtual qreal y() const                 { return _pos.y() + _offset.y(); }
       void setPos(qreal x, qreal y)           { _pos.rx() = x, _pos.ry() = y;   }
       void setPos(const QPointF& p)           { _pos = p;                }
+      QPointF& rpos()                         { return _pos;                    }
       qreal& rxpos()                          { return _pos.rx();        }
       qreal& rypos()                          { return _pos.ry();        }
       virtual void move(const QPointF& s)     { _pos += s;               }
@@ -216,27 +223,14 @@ class Element : public ScoreElement {
       qreal pageX() const;
       qreal canvasX() const;
 
-      const QPointF& userOff() const             { return _userOff;  }
-      virtual void setUserOff(const QPointF& o)  { _userOff = o;     }
-      void setUserXoffset(qreal v)               { _userOff.setX(v); }
-      void setUserYoffset(qreal v)               { _userOff.setY(v); }
+      const QPointF& offset() const            { return _offset;  }
+      virtual void setOffset(const QPointF& o) { _offset = o;     }
+      void setOffset(qreal x, qreal y) { _offset.rx() = x, _offset.ry() = y; }
+      QPointF& roffset()                       { return _offset; }
+      qreal& rxoffset()                        { return _offset.rx(); }
+      qreal& ryoffset()                        { return _offset.ry(); }
 
-      qreal& rUserXoffset()                   { return _userOff.rx(); }
-      qreal& rUserYoffset()                   { return _userOff.ry(); }
-
-      // function versions for scripts: use coords in spatium units rather than raster
-      // and route pos changes to userOff
-      QRectF scriptBbox() const;
-      virtual QPointF scriptPagePos() const;
-      virtual QPointF scriptPos() const;
-      void scriptSetPos(const QPointF& p);
-      QPointF scriptUserOff() const;
-      void scriptSetUserOff(const QPointF& o);
-
-      bool isNudged() const                       { return !(_readPos.isNull() && _userOff.isNull()); }
-      const QPointF& readPos() const              { return _readPos;   }
-      void setReadPos(const QPointF& p)           { _readPos = p;      }
-      virtual void adjustReadPos();
+      bool isNudged() const                       { return !_offset.isNull(); }
 
       virtual const QRectF& bbox() const          { return _bbox;              }
       virtual QRectF& bbox()                      { return _bbox;              }
@@ -322,7 +316,8 @@ class Element : public ScoreElement {
 
       virtual QColor color() const             { return _color; }
       QColor curColor() const;
-      QColor curColor(const Element* proxy) const;
+      QColor curColor(bool isVisible) const;
+      QColor curColor(bool isVisible, QColor normalColor) const;
       virtual void setColor(const QColor& c)     { _color = c;    }
       void undoSetColor(const QColor& c);
       void undoSetVisible(bool v);
@@ -342,7 +337,7 @@ class Element : public ScoreElement {
 /**
  Handle a dropped element at canvas relative \a pos of given element
  \a type and \a subtype. Returns dropped element if any.
- The ownership of element in DropData is transfered to the called
+ The ownership of element in DropData is transferred to the called
  element (if not used, element has to be deleted).
  The returned element will be selected if not in note edit mode.
 
@@ -356,24 +351,23 @@ class Element : public ScoreElement {
  */
       virtual bool mousePress(EditData&) { return false; }
 
-      mutable bool itemDiscovered;     ///< helper flag for bsp
+      mutable bool itemDiscovered      { false };     ///< helper flag for bsp
 
       virtual void scanElements(void* data, void (*func)(void*, Element*), bool all=true);
 
-      virtual void reset();         // reset all properties & position to default
+      virtual void reset() override;         // reset all properties & position to default
 
       virtual qreal mag() const        { return _mag;   }
       void setMag(qreal val)           { _mag = val;    }
       qreal magS() const;
 
       bool isPrintable() const;
-      virtual bool isSpanner() const           { return false; }
-      virtual bool isSpannerSegment() const    { return false; }
-
       qreal point(const Spatium sp) const { return sp.val() * spatium(); }
 
       virtual int tick() const;       // utility, searches for segment / segment parent
       virtual int rtick() const;      // utility, searches for segment / segment parent
+      virtual Fraction rfrac() const; // utility, searches for segment / segment parent
+      virtual Fraction afrac() const; // utility, searches for segment / segment parent
 
       //
       // check element for consistency; return false if element
@@ -384,7 +378,7 @@ class Element : public ScoreElement {
       static Ms::Element* create(Ms::ElementType type, Score*);
       static Element* name2Element(const QStringRef&, Score*);
 
-      virtual bool systemFlag() const          { return flag(ElementFlag::SYSTEM);  }
+      bool systemFlag() const          { return flag(ElementFlag::SYSTEM);  }
       void setSystemFlag(bool v) const { setFlag(ElementFlag::SYSTEM, v);  }
 
       bool header() const              { return flag(ElementFlag::HEADER);        }
@@ -393,14 +387,16 @@ class Element : public ScoreElement {
       bool trailer() const             { return flag(ElementFlag::TRAILER); }
       void setTrailer(bool val)        { setFlag(ElementFlag::TRAILER, val); }
 
-      bool selectable() const          { return flag(ElementFlag::SELECTABLE);  }
-      void setSelectable(bool val)     { setFlag(ElementFlag::SELECTABLE, val); }
+      bool selectable() const          { return !flag(ElementFlag::NOT_SELECTABLE);  }
+      void setSelectable(bool val)     { setFlag(ElementFlag::NOT_SELECTABLE, !val); }
 
       bool dropTarget() const          { return flag(ElementFlag::DROP_TARGET); }
       void setDropTarget(bool v) const { setFlag(ElementFlag::DROP_TARGET, v);  }
 
+      bool composition() const          { return flag(ElementFlag::COMPOSITION); }
+      void setComposition(bool v) const { setFlag(ElementFlag::COMPOSITION, v);  }
+
       virtual bool isMovable() const   { return flag(ElementFlag::MOVABLE);     }
-      bool isSegmentFlag() const       { return flag(ElementFlag::SEGMENT);     }
 
       bool enabled() const             { return flag(ElementFlag::ENABLED); }
       void setEnabled(bool val)        { setFlag(ElementFlag::ENABLED, val); }
@@ -408,19 +404,20 @@ class Element : public ScoreElement {
       uint tag() const                 { return _tag;                      }
       void setTag(uint val)            { _tag = val;                       }
 
-      bool autoplace() const           { return flag(ElementFlag::AUTOPLACE); }
-      void setAutoplace(bool v)        { setFlag(ElementFlag::AUTOPLACE, v); }
+      bool autoplace() const           { return !flag(ElementFlag::NO_AUTOPLACE); }
+      void setAutoplace(bool v)        { setFlag(ElementFlag::NO_AUTOPLACE, !v); }
 
-      virtual QVariant getProperty(P_ID) const override;
-      virtual bool setProperty(P_ID, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
-      virtual void initSubStyle(SubStyle);
+      virtual QVariant getProperty(Pid) const override;
+      virtual bool setProperty(Pid, const QVariant&) override;
+      virtual void undoChangeProperty(Pid id, const QVariant&, PropertyFlags ps) override;
+      using ScoreElement::undoChangeProperty;
+      virtual QVariant propertyDefault(Pid) const override;
+      virtual Pid propertyId(const QStringRef& xmlName) const override;
+      virtual QString propertyUserValue(Pid) const override;
+      virtual Element* propertyDelegate(Pid) { return 0; }  // return Spanner for SpannerSegment for some properties
 
-      bool custom(P_ID) const;
-      bool readProperty(const QStringRef&, XmlReader&, P_ID);
+      bool custom(Pid) const;
       virtual bool isUserModified() const;
-
-      virtual void styleChanged() {}
 
       void drawSymbol(SymId id, QPainter* p, const QPointF& o = QPointF(), qreal scale = 1.0) const;
       void drawSymbol(SymId id, QPainter* p, const QPointF& o, int n) const;
@@ -447,7 +444,7 @@ class Element : public ScoreElement {
       virtual Element* prevSegmentElement();  //< next-element and prev-element command
 
       virtual QString accessibleInfo() const;         //< used to populate the status bar
-      virtual QString screenReaderInfo() const  {     //< by default returns accessibleInfo, but can be overriden
+      virtual QString screenReaderInfo() const  {     //< by default returns accessibleInfo, but can be overridden
             return accessibleInfo();
             }
                                                        //  if the screen-reader needs a special string (see note for example)
@@ -457,6 +454,10 @@ class Element : public ScoreElement {
 
       virtual void triggerLayout() const;
       virtual void drawEditMode(QPainter*, EditData&);
+
+      void autoplaceSegmentElement(qreal minDistance);      // helper function
+      void autoplaceMeasureElement(qreal minDistance);
+      qreal styleP(Sid idx) const;
       };
 
 //-----------------------------------------------------------------------------
@@ -469,7 +470,7 @@ class Element : public ScoreElement {
 //-----------------------------------------------------------------------------
 
 struct PropertyData {
-      P_ID id;
+      Pid id;
       QVariant data;
       };
 
@@ -478,19 +479,8 @@ class ElementEditData {
       Element* e;
       QList<PropertyData> propertyData;
 
-      void pushProperty(P_ID pid) { propertyData.push_back(PropertyData({pid, e->getProperty(pid) })); }
+      void pushProperty(Pid pid) { propertyData.push_back(PropertyData({pid, e->getProperty(pid) })); }
       };
-
-//---------------------------------------------------------
-//   toSpanner
-//---------------------------------------------------------
-
-class Spanner;
-
-static inline Spanner* toSpanner(Element* e) {
-      Q_ASSERT(e == 0 || e->isSpanner());
-      return (Spanner*)e;
-      }
 
 //---------------------------------------------------------
 //   ElementList
@@ -503,38 +493,6 @@ class ElementList : public std::vector<Element*> {
       void replace(Element* old, Element* n);
       void write(XmlWriter&) const;
       void write(XmlWriter&, const char* name) const;
-      };
-
-//---------------------------------------------------------
-//   @@ Line
-//---------------------------------------------------------
-
-class Line : public Element {
-      qreal _width;
-      qreal _len;
-
-   protected:
-      bool vertical;
-
-public:
-      Line(Score*);
-      Line(Score*, bool vertical);
-      Line &operator=(const Line&);
-
-      virtual Line* clone() const override        { return new Line(*this); }
-      virtual ElementType type() const override { return ElementType::LINE; }
-      virtual void layout() override;
-
-      virtual void draw(QPainter*) const override;
-      void writeProperties(XmlWriter& xml) const;
-      bool readProperties(XmlReader&);
-
-      qreal len() const          { return _len;   }
-      qreal lineWidth() const    { return _width; }
-      void setLen(qreal v)       { _len = v;      }
-      void setLineWidth(qreal v) { _width = v;    }
-
-      virtual void spatiumChanged(qreal /*oldValue*/, qreal /*newValue*/) override;
       };
 
 //---------------------------------------------------------
@@ -567,7 +525,6 @@ extern void collectElements(void* data, Element* e);
 }     // namespace Ms
 
 Q_DECLARE_METATYPE(Ms::ElementType);
-Q_DECLARE_METATYPE(Ms::Element::Placement);
 
 #endif
 

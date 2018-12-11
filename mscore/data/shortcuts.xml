@@ -161,6 +161,10 @@
     <seq>Shift+G</seq>
     </SC>
   <SC>
+    <key>chord-tie</key>
+    <seq>Alt++</seq>
+    </SC>
+  <SC>
     <key>insert-a</key>
     <seq>Ctrl+Shift+A</seq>
     </SC>
@@ -259,6 +263,14 @@
   <SC>
     <key>prev-segment-element</key>
     <seq>Ctrl+Alt+Shift+Left</seq>
+    </SC>
+  <SC>
+    <key>next-element</key>
+    <seq>Alt+Right</seq>
+    </SC>
+  <SC>
+    <key>prev-element</key>
+    <seq>Alt+Left</seq>
     </SC>
   <SC>
     <key>move-up</key>
@@ -965,10 +977,6 @@
   <SC>
     <key>text-word-left</key>
     <seq>Ctrl+Left</seq>
-    </SC>
-  <SC>
-    <key>relayout</key>
-    <seq>Shift+L</seq>
     </SC>
   <SC>
     <key>text-word-right</key>

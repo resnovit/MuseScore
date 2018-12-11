@@ -24,25 +24,33 @@
 namespace Ms {
 
 //---------------------------------------------------------
+//   instrumentChangeStyle
+//---------------------------------------------------------
+
+static const ElementStyle instrumentChangeStyle {
+      { Sid::instrumentChangePlacement,          Pid::PLACEMENT              },
+      };
+
+//---------------------------------------------------------
 //   InstrumentChange
 //---------------------------------------------------------
 
 InstrumentChange::InstrumentChange(Score* s)
-   : Text(SubStyle::INSTRUMENT_CHANGE, s)
+   : TextBase(s, Tid::INSTRUMENT_CHANGE, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)
       {
-      setFlags(ElementFlag::MOVABLE | ElementFlag::SELECTABLE | ElementFlag::ON_STAFF);
+      initElementStyle(&instrumentChangeStyle);
       _instrument = new Instrument();
       }
 
 InstrumentChange::InstrumentChange(const Instrument& i, Score* s)
-   : Text(SubStyle::INSTRUMENT_CHANGE, s)
+   : TextBase(s, Tid::INSTRUMENT_CHANGE, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)
       {
-      setFlags(ElementFlag::MOVABLE | ElementFlag::SELECTABLE | ElementFlag::ON_STAFF);
+      initElementStyle(&instrumentChangeStyle);
       _instrument = new Instrument(i);
       }
 
 InstrumentChange::InstrumentChange(const InstrumentChange& is)
-   : Text(is)
+   : TextBase(is)
       {
       _instrument = new Instrument(*is._instrument);
       }
@@ -54,8 +62,9 @@ InstrumentChange::~InstrumentChange()
 
 void InstrumentChange::setInstrument(const Instrument& i)
       {
-      delete _instrument;
-      _instrument = new Instrument(i);
+      *_instrument = i;
+      //delete _instrument;
+      //_instrument = new Instrument(i);
       }
 
 //---------------------------------------------------------
@@ -64,9 +73,9 @@ void InstrumentChange::setInstrument(const Instrument& i)
 
 void InstrumentChange::write(XmlWriter& xml) const
       {
-      xml.stag(name());
+      xml.stag(this);
       _instrument->write(xml, part());
-      Text::writeProperties(xml);
+      TextBase::writeProperties(xml);
       xml.etag();
       }
 
@@ -80,7 +89,7 @@ void InstrumentChange::read(XmlReader& e)
             const QStringRef& tag(e.name());
             if (tag == "Instrument")
                   _instrument->read(e, part());
-            else if (!Text::readProperties(e))
+            else if (!TextBase::readProperties(e))
                   e.unknown();
             }
       if (score()->mscVersion() <= 206) {
@@ -98,42 +107,27 @@ void InstrumentChange::read(XmlReader& e)
       }
 
 //---------------------------------------------------------
-//   getProperty
-//---------------------------------------------------------
-
-QVariant InstrumentChange::getProperty(P_ID propertyId) const
-      {
-      switch (propertyId) {
-            default:
-                  return Text::getProperty(propertyId);
-            }
-      }
-
-//---------------------------------------------------------
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant InstrumentChange::propertyDefault(P_ID propertyId) const
+QVariant InstrumentChange::propertyDefault(Pid propertyId) const
       {
       switch (propertyId) {
-            case P_ID::SUB_STYLE:
-                  return int(SubStyle::INSTRUMENT_CHANGE);
+            case Pid::SUB_STYLE:
+                  return int(Tid::INSTRUMENT_CHANGE);
             default:
-                  return Text::propertyDefault(propertyId);
+                  return TextBase::propertyDefault(propertyId);
             }
       }
 
 //---------------------------------------------------------
-//   setProperty
+//   layout
 //---------------------------------------------------------
 
-bool InstrumentChange::setProperty(P_ID propertyId, const QVariant& v)
+void InstrumentChange::layout()
       {
-      switch (propertyId) {
-            default:
-                  return Text::setProperty(propertyId, v);
-            }
-      return true;
+      TextBase::layout();
+      autoplaceSegmentElement(styleP(Sid::instrumentChangeMinDistance));
       }
 
 }

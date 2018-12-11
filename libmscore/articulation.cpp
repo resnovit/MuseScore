@@ -26,18 +26,25 @@
 namespace Ms {
 
 //---------------------------------------------------------
+//   articulationStyle
+//---------------------------------------------------------
+
+static const ElementStyle articulationStyle {
+//      { Sid::articulationOffset, Pid::OFFSET },
+      };
+
+//---------------------------------------------------------
 //   Articulation
 //---------------------------------------------------------
 
 Articulation::Articulation(Score* s)
-   : Element(s)
+   : Element(s, ElementFlag::MOVABLE)
       {
-      setFlags(ElementFlag::MOVABLE | ElementFlag::SELECTABLE);
+      initElementStyle(&articulationStyle);
       _symId         = SymId::noSym;
       _anchor        = ArticulationAnchor::TOP_STAFF;
       _direction     = Direction::AUTO;
       _up            = true;
-      _timeStretch   = 1.0;
       _ornamentStyle = MScore::OrnamentStyle::DEFAULT;
       setPlayArticulation(true);
       }
@@ -55,7 +62,20 @@ Articulation::Articulation(SymId id, Score* s)
 void Articulation::setSymId(SymId id)
       {
       _symId  = id;
-      _anchor = ArticulationAnchor(propertyDefault(P_ID::ARTICULATION_ANCHOR).toInt());
+      _anchor = ArticulationAnchor(propertyDefault(Pid::ARTICULATION_ANCHOR).toInt());
+      }
+
+//---------------------------------------------------------
+//   subtype
+//---------------------------------------------------------
+
+int Articulation::subtype() const
+      {
+      QString s = Sym::id2name(_symId);
+      if (s.endsWith("Below"))
+            return int(Sym::name2id(s.left(s.size() - 5) + "Above"));
+      else
+            return int(_symId);
       }
 
 //---------------------------------------------------------
@@ -64,13 +84,12 @@ void Articulation::setSymId(SymId id)
 
 void Articulation::setUp(bool val)
       {
-      if (val != _up) {
-            QString s = Sym::id2name(_symId);
-            if (s.endsWith(_up ? "Above" : "Below")) {
-                  QString s2 = s.left(s.size() - 5) + (val ? "Above" : "Below");
-                  _symId = Sym::name2id(s2);
-                  }
-            _up = val;
+      _up = val;
+      bool dup = _direction == Direction::AUTO ? val : _direction == Direction::UP;
+      QString s = Sym::id2name(_symId);
+      if (s.endsWith(!dup ? "Above" : "Below")) {
+            QString s2 = s.left(s.size() - 5) + (dup ? "Above" : "Below");
+            _symId = Sym::name2id(s2);
             }
       }
 
@@ -109,14 +128,12 @@ bool Articulation::readProperties(XmlReader& e)
             }
       else if (tag == "anchor")
             _anchor = ArticulationAnchor(e.readInt());
-      else if (readProperty(tag, e, P_ID::DIRECTION))
-            ;
+      else if (tag == "direction")
+            readProperty(e, Pid::DIRECTION);
       else if ( tag == "ornamentStyle")
-            setProperty(P_ID::ORNAMENT_STYLE, Ms::getProperty(P_ID::ORNAMENT_STYLE, e));
+            readProperty(e, Pid::ORNAMENT_STYLE);
       else if ( tag == "play")
             setPlayArticulation(e.readBool());
-      else if (tag == "timeStretch")
-            _timeStretch = e.readDouble();
       else if (tag == "offset") {
             if (score()->mscVersion() > 114)
                   Element::readProperties(e);
@@ -138,16 +155,15 @@ void Articulation::write(XmlWriter& xml) const
       {
       if (!xml.canWrite(this))
             return;
-      xml.stag("Articulation");
+      xml.stag(this);
       if (!_channelName.isEmpty())
             xml.tagE(QString("channel name=\"%1\"").arg(_channelName));
-      writeProperty(xml, P_ID::DIRECTION);
+      writeProperty(xml, Pid::DIRECTION);
       xml.tag("subtype", Sym::id2name(_symId));
-      writeProperty(xml, P_ID::TIME_STRETCH);
-      writeProperty(xml, P_ID::PLAY);
-      writeProperty(xml, P_ID::ORNAMENT_STYLE);
+      writeProperty(xml, Pid::PLAY);
+      writeProperty(xml, Pid::ORNAMENT_STYLE);
       Element::writeProperties(xml);
-      writeProperty(xml, P_ID::ARTICULATION_ANCHOR);
+      writeProperty(xml, Pid::ARTICULATION_ANCHOR);
       xml.etag();
       }
 
@@ -166,7 +182,7 @@ QString Articulation::userName() const
 
 void Articulation::draw(QPainter* painter) const
       {
-#if 0
+#if 0 //TODO
       SymId sym = symId();
       ArticulationShowIn flags = articulationList[int(articulationType())].flags;
       if (staff()) {
@@ -191,7 +207,7 @@ void Articulation::draw(QPainter* painter) const
 ChordRest* Articulation::chordRest() const
       {
       if (parent() && parent()->isChordRest())
-            return static_cast<ChordRest*>(parent());
+            return toChordRest(parent());
       return 0;
       }
 
@@ -227,13 +243,11 @@ System* Articulation::system() const
 Page* Articulation::page() const
       {
       System* s = system();
-      return static_cast<Page*>(s ? s->parent() : 0);
+      return toPage(s ? s->parent() : 0);
       }
 
 //---------------------------------------------------------
 //   layout
-//    height() and width() should return sensible
-//    values when calling this method
 //---------------------------------------------------------
 
 void Articulation::layout()
@@ -243,30 +257,15 @@ void Articulation::layout()
       }
 
 //---------------------------------------------------------
-//   setDirection
+//   layoutCloseToNote
+//    Needed to figure out the layout policy regarding
+//    distance to the note and placement in relation to
+//    slur.
 //---------------------------------------------------------
 
-void Articulation::setDirection(Direction d)
+bool Articulation::layoutCloseToNote() const
       {
-      _direction = d;
-//      if (d != Direction::AUTO)
-//            _up = (d == Direction::UP);
-      }
-
-//---------------------------------------------------------
-//   reset
-//---------------------------------------------------------
-
-void Articulation::reset()
-      {
-#if 0
-      if (_direction != Direction::AUTO)
-            undoChangeProperty(P_ID::DIRECTION, Direction::AUTO);
-      ArticulationAnchor a = score()->style()->articulationAnchor(int(articulationType()));
-      if (_anchor != a)
-            undoChangeProperty(P_ID::ARTICULATION_ANCHOR, int(a));
-#endif
-      Element::reset();
+      return (isStaccato() || isTenuto()) && !isDouble();
       }
 
 //---------------------------------------------------------
@@ -282,14 +281,13 @@ QLineF Articulation::dragAnchor() const
 //   getProperty
 //---------------------------------------------------------
 
-QVariant Articulation::getProperty(P_ID propertyId) const
+QVariant Articulation::getProperty(Pid propertyId) const
       {
       switch (propertyId) {
-            case P_ID::DIRECTION:           return QVariant::fromValue<Direction>(direction());
-            case P_ID::ARTICULATION_ANCHOR: return int(anchor());
-            case P_ID::TIME_STRETCH:        return timeStretch();
-            case P_ID::ORNAMENT_STYLE:      return int(ornamentStyle());
-            case P_ID::PLAY:                return bool(playArticulation());
+            case Pid::DIRECTION:           return QVariant::fromValue<Direction>(direction());
+            case Pid::ARTICULATION_ANCHOR: return int(anchor());
+            case Pid::ORNAMENT_STYLE:      return int(ornamentStyle());
+            case Pid::PLAY:                return bool(playArticulation());
             default:
                   return Element::getProperty(propertyId);
             }
@@ -299,24 +297,20 @@ QVariant Articulation::getProperty(P_ID propertyId) const
 //   setProperty
 //---------------------------------------------------------
 
-bool Articulation::setProperty(P_ID propertyId, const QVariant& v)
+bool Articulation::setProperty(Pid propertyId, const QVariant& v)
       {
       switch (propertyId) {
-            case P_ID::DIRECTION:
+            case Pid::DIRECTION:
                   setDirection(v.value<Direction>());
                   break;
-            case P_ID::ARTICULATION_ANCHOR:
+            case Pid::ARTICULATION_ANCHOR:
                   setAnchor(ArticulationAnchor(v.toInt()));
                   break;
-            case P_ID::PLAY:
+            case Pid::PLAY:
                   setPlayArticulation(v.toBool());
                   break;
-            case P_ID::ORNAMENT_STYLE:
+            case Pid::ORNAMENT_STYLE:
                   setOrnamentStyle(MScore::OrnamentStyle(v.toInt()));
-                  break;
-            case P_ID::TIME_STRETCH:
-                  setTimeStretch(v.toDouble());
-                  score()->fixTicks();
                   break;
             default:
                   return Element::setProperty(propertyId, v);
@@ -329,13 +323,13 @@ bool Articulation::setProperty(P_ID propertyId, const QVariant& v)
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant Articulation::propertyDefault(P_ID propertyId) const
+QVariant Articulation::propertyDefault(Pid propertyId) const
       {
       switch (propertyId) {
-            case P_ID::DIRECTION:
+            case Pid::DIRECTION:
                   return QVariant::fromValue<Direction>(Direction::AUTO);
 
-            case P_ID::ARTICULATION_ANCHOR:
+            case Pid::ARTICULATION_ANCHOR:
                   switch (_symId) {
                         case SymId::articAccentAbove:
                         case SymId::articAccentBelow:
@@ -397,14 +391,11 @@ QVariant Articulation::propertyDefault(P_ID propertyId) const
                               return int(ArticulationAnchor::TOP_STAFF);
                         }
 
-            case P_ID::TIME_STRETCH:
-                  return 1.0; // articulationList[int(articulationType())].timeStretch;
-
-            case P_ID::ORNAMENT_STYLE:
+            case Pid::ORNAMENT_STYLE:
                   //return int(score()->style()->ornamentStyle(_ornamentStyle));
                   return int(MScore::OrnamentStyle::DEFAULT);
 
-            case P_ID::PLAY:
+            case Pid::PLAY:
                   return true;
 
             default:
@@ -414,12 +405,12 @@ QVariant Articulation::propertyDefault(P_ID propertyId) const
       }
 
 //---------------------------------------------------------
-//   articulationName
+//   symId2ArticulationName
 //---------------------------------------------------------
 
-const char* Articulation::articulationName() const
+const char* Articulation::symId2ArticulationName(SymId symId)
       {
-      switch (_symId) {
+      switch (symId) {
             case SymId::articStaccatissimoAbove:
             case SymId::articStaccatissimoBelow:
             case SymId::articStaccatissimoStrokeAbove:
@@ -452,56 +443,53 @@ const char* Articulation::articulationName() const
             case SymId::articAccentBelow:
                   return "sforzato";
 
+            case SymId::brassMuteOpen:
+                  return "open";
+
+            case SymId::brassMuteClosed:
+                  return "closed";
+
+            case SymId::stringsHarmonic:
+                  return "harmonic";
+
+            case SymId::ornamentMordentInverted:
+                  return "mordent-inverted";
+
             default:
                   return "---";
             }
       }
 
-
 //---------------------------------------------------------
-//   propertyStyle
+//   articulationName
 //---------------------------------------------------------
 
-PropertyFlags Articulation::propertyFlags(P_ID id) const
+const char* Articulation::articulationName() const
       {
-      switch (id) {
-            case P_ID::DIRECTION:
-            case P_ID::TIME_STRETCH:
-            case P_ID::ARTICULATION_ANCHOR:
-                  return PropertyFlags::NOSTYLE;
-
-            default:
-                  break;
-            }
-      return Element::propertyFlags(id);
+      return symId2ArticulationName(_symId);
       }
 
 //---------------------------------------------------------
 //   getPropertyStyle
 //---------------------------------------------------------
 
-StyleIdx Articulation::getPropertyStyle(P_ID id) const
+Sid Articulation::getPropertyStyle(Pid /*id*/) const
       {
-      switch (id) {
-            default:
-                  break;
-            }
-      return StyleIdx::NOSTYLE;
+      return Sid::NOSTYLE;
       }
 
 //---------------------------------------------------------
 //   resetProperty
 //---------------------------------------------------------
 
-void Articulation::resetProperty(P_ID id)
+void Articulation::resetProperty(Pid id)
       {
       switch (id) {
-            case P_ID::DIRECTION:
-            case P_ID::TIME_STRETCH:
-            case P_ID::ORNAMENT_STYLE:
+            case Pid::DIRECTION:
+            case Pid::ORNAMENT_STYLE:
                   setProperty(id, propertyDefault(id));
                   return;
-            case P_ID::ARTICULATION_ANCHOR:
+            case Pid::ARTICULATION_ANCHOR:
                   setProperty(id, propertyDefault(id));
                   return;
 
@@ -517,22 +505,8 @@ void Articulation::resetProperty(P_ID id)
 
 qreal Articulation::mag() const
       {
-      return parent() ? parent()->mag() * score()->styleD(StyleIdx::articulationMag): 1.0;
+      return parent() ? parent()->mag() * score()->styleD(Sid::articulationMag): 1.0;
       }
-
-//---------------------------------------------------------
-//   isFermata
-//---------------------------------------------------------
-
-bool Articulation::isFermata() const
-      {
-      return _symId == SymId::fermataAbove           || _symId == SymId::fermataBelow
-          || _symId == SymId::fermataLongAbove       || _symId == SymId::fermataLongBelow
-          || _symId == SymId::fermataLongHenzeAbove  || _symId == SymId::fermataLongHenzeBelow
-          || _symId == SymId::fermataShortAbove      || _symId == SymId::fermataShortBelow
-          || _symId == SymId::fermataShortHenzeAbove || _symId == SymId::fermataShortHenzeBelow
-          || _symId == SymId::fermataVeryLongAbove   || _symId == SymId::fermataVeryLongBelow
-          || _symId == SymId::fermataVeryShortAbove  || _symId == SymId::fermataVeryShortBelow;      }
 
 bool Articulation::isTenuto() const
       {
@@ -550,6 +524,19 @@ bool Articulation::isAccent() const
       {
       return _symId == SymId::articAccentAbove          || _symId == SymId::articAccentBelow
           || _symId == SymId::articAccentStaccatoAbove  || _symId == SymId::articAccentStaccatoBelow;
+      }
+
+bool Articulation::isMarcato() const
+      {
+      return _symId == SymId::articMarcatoAbove         || _symId == SymId::articMarcatoBelow
+          || _symId == SymId::articMarcatoStaccatoAbove || _symId == SymId::articMarcatoStaccatoBelow
+          || _symId == SymId::articMarcatoTenutoAbove   || _symId == SymId::articMarcatoTenutoBelow;
+      }
+
+bool Articulation::isDouble() const {
+      return _symId == SymId::articMarcatoStaccatoAbove || _symId == SymId::articMarcatoStaccatoBelow
+          || _symId == SymId::articAccentStaccatoAbove  || _symId == SymId::articAccentStaccatoBelow
+          || _symId == SymId::articMarcatoTenutoAbove   || _symId == SymId::articMarcatoTenutoBelow;
       }
 
 //---------------------------------------------------------
@@ -574,7 +561,42 @@ QString Articulation::accessibleInfo() const
       return QString("%1: %2").arg(Element::accessibleInfo()).arg(userName());
       }
 
+//---------------------------------------------------------
+//   doAutoplace
+//    check for collisions
+//---------------------------------------------------------
+
+void Articulation::doAutoplace()
+      {
+      qreal minDistance = score()->styleP(Sid::dynamicsMinDistance);
+      if (autoplace() && parent()) {
+            Segment* s = segment();
+            Measure* m = measure();
+            int si     = staffIdx();
+
+            SysStaff* ss = m->system()->staff(si);
+            QRectF r = bbox().translated(chordRest()->pos() + m->pos() + s->pos() + pos());
+
+            qreal d;
+            bool above = up(); // (anchor() == ArticulationAnchor::TOP_STAFF || anchor() == ArticulationAnchor::TOP_CHORD);
+            SkylineLine sk(!above);
+            if (above) {
+                  sk.add(r.x(), r.bottom(), r.width());
+                  d = sk.minDistance(ss->skyline().north());
+                  }
+            else {
+                  sk.add(r.x(), r.top(), r.width());
+                  d = ss->skyline().south().minDistance(sk);
+                  }
+
+            if (d > -minDistance) {
+                  qreal yd = d + minDistance;
+                  if (above)
+                        yd *= -1.0;
+                  rypos() += yd;
+                  r.translate(QPointF(0.0, yd));
+                  }
+            }
+      }
+
 }
-
-
-

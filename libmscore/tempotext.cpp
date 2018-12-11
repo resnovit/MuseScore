@@ -17,24 +17,37 @@
 #include "measure.h"
 #include "staff.h"
 #include "xml.h"
+#include "undo.h"
+#include "musescoreCore.h"
 
 namespace Ms {
 
 #define MIN_TEMPO 5.0/60
 #define MAX_TEMPO 999.0/60
 
+//TODO: textChanged() needs to be called during/after editing
+
+//---------------------------------------------------------
+//   tempoStyle
+//---------------------------------------------------------
+
+static const ElementStyle tempoStyle {
+      { Sid::tempoSystemFlag,                    Pid::SYSTEM_FLAG            },
+      { Sid::tempoPlacement,                     Pid::PLACEMENT              },
+      };
+
 //---------------------------------------------------------
 //   TempoText
 //---------------------------------------------------------
 
 TempoText::TempoText(Score* s)
-   : Text(SubStyle::TEMPO, s)
+   : TextBase(s, Tid::TEMPO, ElementFlags(ElementFlag::SYSTEM))
       {
+      initElementStyle(&tempoStyle);
       _tempo      = 2.0;      // propertyDefault(P_TEMPO).toDouble();
       _followText = false;
       _relative   = 1.0;
       _isRelative = false;
-      setPlacement(Element::Placement::ABOVE);
       }
 
 //---------------------------------------------------------
@@ -43,11 +56,11 @@ TempoText::TempoText(Score* s)
 
 void TempoText::write(XmlWriter& xml) const
       {
-      xml.stag("Tempo");
+      xml.stag(this);
       xml.tag("tempo", _tempo);
       if (_followText)
             xml.tag("followText", _followText);
-      Text::writeProperties(xml);
+      TextBase::writeProperties(xml);
       xml.etag();
       }
 
@@ -63,7 +76,7 @@ void TempoText::read(XmlReader& e)
                   setTempo(e.readDouble());
             else if (tag == "followText")
                   _followText = e.readInt();
-            else if (!Text::readProperties(e))
+            else if (!TextBase::readProperties(e))
                   e.unknown();
             }
       // check sanity
@@ -193,14 +206,54 @@ void TempoText::updateRelative()
       }
 
 //---------------------------------------------------------
-//   textChanged
+//   endEdit
 //    text may have changed
 //---------------------------------------------------------
 
-void TempoText::textChanged()
+void TempoText::endEdit(EditData& ed)
       {
-      if (!_followText)
-            return;
+      TextBase::endEdit(ed);
+      if (_followText) {
+            UndoStack* us = score()->undoStack();
+            UndoCommand* ucmd = us->last();
+            if (ucmd) {
+                  us->reopen();
+                  updateTempo();
+                  score()->endCmd();
+                  }
+            else {
+                  score()->startCmd();
+                  updateTempo();
+                  score()->endCmd();
+                  }
+            }
+      }
+
+//---------------------------------------------------------
+//   undoChangeProperty
+//---------------------------------------------------------
+
+void TempoText::undoChangeProperty(Pid id, const QVariant& v, PropertyFlags ps)
+      {
+      if (id == Pid::TEMPO_FOLLOW_TEXT) {
+            ScoreElement::undoChangeProperty(id, v, ps);
+            if (_followText) {
+                  updateTempo();
+                  // update inspector?
+                  MuseScoreCore::mscoreCore->updateInspector();
+                  }
+            }
+      else {
+            ScoreElement::undoChangeProperty(id, v, ps);
+            }
+      }
+
+//---------------------------------------------------------
+//   updateTempo
+//---------------------------------------------------------
+
+void TempoText::updateTempo()
+      {
       // cache regexp, they are costly to create
       static QHash<QString, QRegExp> regexps;
       static QHash<QString, QRegExp> regexps2;
@@ -219,7 +272,7 @@ void TempoText::textChanged()
                   if (sl.size() == 2) {
                         qreal nt = qreal(sl[1].toDouble()) * pa.f;
                         if (nt != _tempo) {
-                              setTempo(qreal(sl[1].toDouble()) * pa.f);
+                              undoChangeProperty(Pid::TEMPO, QVariant(qreal(sl[1].toDouble()) * pa.f), propertyFlags(Pid::TEMPO));
                               _relative = 1.0;
                               _isRelative = false;
                               updateScore();
@@ -267,7 +320,7 @@ void TempoText::setTempo(qreal v)
 
 void TempoText::undoSetTempo(qreal v)
       {
-      undoChangeProperty(P_ID::TEMPO, v);
+      undoChangeProperty(Pid::TEMPO, v, propertyFlags(Pid::TEMPO));
       }
 
 //---------------------------------------------------------
@@ -276,22 +329,22 @@ void TempoText::undoSetTempo(qreal v)
 
 void TempoText::undoSetFollowText(bool v)
       {
-      undoChangeProperty(P_ID::TEMPO_FOLLOW_TEXT, v);
+      undoChangeProperty(Pid::TEMPO_FOLLOW_TEXT, v, propertyFlags(Pid::TEMPO));
       }
 
 //---------------------------------------------------------
 //   getProperty
 //---------------------------------------------------------
 
-QVariant TempoText::getProperty(P_ID propertyId) const
+QVariant TempoText::getProperty(Pid propertyId) const
       {
-      switch(propertyId) {
-            case P_ID::TEMPO:
+      switch (propertyId) {
+            case Pid::TEMPO:
                   return _tempo;
-            case P_ID::TEMPO_FOLLOW_TEXT:
+            case Pid::TEMPO_FOLLOW_TEXT:
                   return _followText;
             default:
-                  return Text::getProperty(propertyId);
+                  return TextBase::getProperty(propertyId);
             }
       }
 
@@ -299,19 +352,19 @@ QVariant TempoText::getProperty(P_ID propertyId) const
 //   setProperty
 //---------------------------------------------------------
 
-bool TempoText::setProperty(P_ID propertyId, const QVariant& v)
+bool TempoText::setProperty(Pid propertyId, const QVariant& v)
       {
       switch (propertyId) {
-            case P_ID::TEMPO:
+            case Pid::TEMPO:
                   setTempo(v.toDouble());
                   score()->setTempo(segment(), _tempo);
                   score()->fixTicks();
                   break;
-            case P_ID::TEMPO_FOLLOW_TEXT:
+            case Pid::TEMPO_FOLLOW_TEXT:
                   _followText = v.toBool();
                   break;
             default:
-                  if (!Text::setProperty(propertyId, v))
+                  if (!TextBase::setProperty(propertyId, v))
                         return false;
                   break;
             }
@@ -323,19 +376,17 @@ bool TempoText::setProperty(P_ID propertyId, const QVariant& v)
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant TempoText::propertyDefault(P_ID id) const
+QVariant TempoText::propertyDefault(Pid id) const
       {
       switch(id) {
-            case P_ID::SUB_STYLE:
-                  return int(SubStyle::TEMPO);
-            case P_ID::TEMPO:
+            case Pid::SUB_STYLE:
+                  return int(Tid::TEMPO);
+            case Pid::TEMPO:
                   return 2.0;
-            case P_ID::TEMPO_FOLLOW_TEXT:
+            case Pid::TEMPO_FOLLOW_TEXT:
                   return false;
-            case P_ID::PLACEMENT:
-                  return int(Element::Placement::ABOVE);
             default:
-                  return Text::propertyDefault(id);
+                  return TextBase::propertyDefault(id);
             }
       }
 
@@ -346,23 +397,15 @@ QVariant TempoText::propertyDefault(P_ID id) const
 
 void TempoText::layout()
       {
-      if (autoplace())
-            setUserOff(QPointF());
+      TextBase::layout();
 
-      qreal y;
-      if (placeAbove())
-            y = score()->styleP(StyleIdx::tempoPosAbove);
-      else {
-            qreal sh = staff() ? staff()->height() : 0;
-            y = score()->styleP(StyleIdx::tempoPosBelow) + sh + lineSpacing();
-            }
-      setPos(QPointF(0.0, y));
-      Text::layout1();
+      Segment* s = segment();
+      if (!s)                       // for use in palette
+            return;
 
       // tempo text on first chordrest of measure should align over time sig if present
       //
-      Segment* s = segment();
-      if (s && !s->rtick()) {
+      if (autoplace() && !s->rtick()) {
             Segment* p = segment()->prev(SegmentType::TimeSig);
             if (p) {
                   rxpos() -= s->x() - p->x();
@@ -371,25 +414,7 @@ void TempoText::layout()
                         rxpos() += e->x();
                   }
             }
-
-      if (s && autoplace()) {
-            int firstStaffIdx = s->measure()->system()->firstVisibleStaff();
-            qreal minDistance = score()->styleP(StyleIdx::tempoMinDistance);
-            Shape s1          = s->measure()->staffShape(firstStaffIdx);
-            Shape s2          = shape().translated(s->pos() + pos());
-            if (placeAbove()) {
-                  qreal d = s2.minVerticalDistance(s1);
-                  if (d > -minDistance)
-                        rUserYoffset() = -d - minDistance;
-                  }
-            else {
-                  qreal d = s1.minVerticalDistance(s2);
-                  if (d > -minDistance)
-                        rUserYoffset() = d + minDistance;
-                  }
-            }
-      if (!autoplace())
-            adjustReadPos();
+      autoplaceSegmentElement(styleP(Sid::tempoMinDistance));
       }
 
 //---------------------------------------------------------
@@ -445,7 +470,18 @@ QString TempoText::accessibleInfo() const
                   return QString("%1: %2 %3 = %4").arg(Element::accessibleInfo()).arg(dots1).arg(QObject::tr("note")).arg(secondPart);
             }
       else
-            return Text::accessibleInfo();
+            return TextBase::accessibleInfo();
+      }
+
+//---------------------------------------------------------
+//   getPropertyStyle
+//---------------------------------------------------------
+
+Sid TempoText::getPropertyStyle(Pid pid) const
+      {
+      if (pid == Pid::OFFSET)
+            return placeAbove() ? Sid::tempoPosAbove : Sid::tempoPosBelow;
+      return TextBase::getPropertyStyle(pid);
       }
 
 }

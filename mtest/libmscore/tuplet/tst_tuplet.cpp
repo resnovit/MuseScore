@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Music Composition & Notation
-//  $Id:$
 //
 //  Copyright (C) 2012 Werner Schweer
 //
@@ -138,11 +137,12 @@ void TestTuplet::split(const char* p1, const char* p2)
       ts->setSig(Fraction(3, 4), TimeSigType::NORMAL);
 
       EditData dd(0);
-      dd.element = ts;
+      dd.dropElement = ts;
       dd.modifiers = 0;
       dd.dragOffset = QPointF();
       dd.pos = m->pagePos();
       m->drop(dd);
+      score->doLayout();
 
       QVERIFY(saveCompareScore(score, p1, DIR + p2));
       delete score;

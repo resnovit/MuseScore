@@ -16,7 +16,9 @@ brew update
 
 # additional dependencies
 brew install jack lame
+brew upgrade cmake
 #brew install libogg libvorbis flac libsndfile portaudio
+cmake --version
 
 BREW_CELLAR=$(brew --cellar)
 BREW_PREFIX=$(brew --prefix)
@@ -104,22 +106,40 @@ rvm get head
 #  echo "Qt ${QT_LONG_VERSION} already installed"
 #fi
 
-wget -nv http://utils.musescore.org.s3.amazonaws.com/qt590_mac.zip
+wget -nv http://utils.musescore.org.s3.amazonaws.com/qt5120_mac.zip
 mkdir -p $QT_MACOS
-unzip -qq qt590_mac.zip -d $QT_MACOS
-rm qt590_mac.zip
+unzip -qq qt5120_mac.zip -d $QT_MACOS
+rm qt5120_mac.zip
+
+#install sparkle
+export SPARKLE_VERSION=1.20.0
+mkdir Sparkle-${SPARKLE_VERSION}
+cd Sparkle-${SPARKLE_VERSION}
+wget -nv https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.bz2
+tar jxf Sparkle-${SPARKLE_VERSION}.tar.bz2
+cd ..
+mkdir -p ~/Library/Frameworks
+mv Sparkle-${SPARKLE_VERSION}/Sparkle.framework ~/Library/Frameworks/
+rm -rf Sparkle-${SPARKLE_VERSION}
 
 #install signing certificate
-export CERTIFICATE_P12=Certificate.p12
-echo $CERTIFICATE_OSX_P12 | base64 - -D -o $CERTIFICATE_P12
-export KEYCHAIN=build.keychain
-security create-keychain -p travis $KEYCHAIN
-security default-keychain -s $KEYCHAIN
-security unlock-keychain -p travis $KEYCHAIN
-# Set keychain timeout to 1 hour for long builds
-# see http://www.egeek.me/2013/02/23/jenkins-and-xcode-user-interaction-is-not-allowed/
-security set-keychain-settings -t 3600 -l $KEYCHAIN
-security import $CERTIFICATE_P12 -k $KEYCHAIN -P "$CERTIFICATE_OSX_PASSWORD" -T /usr/bin/codesign
+if [ -n "$CERTIFICATE_OSX_PASSWORD" ]
+then
+    export CERTIFICATE_P12=Certificate.p12
+    echo $CERTIFICATE_OSX_P12 | base64 - -D -o $CERTIFICATE_P12
+    export KEYCHAIN=build.keychain
+    security create-keychain -p travis $KEYCHAIN
+    security default-keychain -s $KEYCHAIN
+    security unlock-keychain -p travis $KEYCHAIN
+    # Set keychain timeout to 1 hour for long builds
+    # see http://www.egeek.me/2013/02/23/jenkins-and-xcode-user-interaction-is-not-allowed/
+    security set-keychain-settings -t 3600 -l $KEYCHAIN
+    security import $CERTIFICATE_P12 -k $KEYCHAIN -P "$CERTIFICATE_OSX_PASSWORD" -T /usr/bin/codesign
+
+    security set-key-partition-list -S apple-tool:,apple: -s -k travis $KEYCHAIN
+fi
+
+
 
 
 

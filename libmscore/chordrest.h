@@ -56,7 +56,6 @@ class ChordRest : public DurationElement {
       void processSiblings(std::function<void(Element*)> func);
 
    protected:
-      QVector<Articulation*> _articulations;
       std::vector<Lyrics*> _lyrics;
       TabDurationSymbol* _tabDur;         // stores a duration symbol in tablature staves
 
@@ -85,7 +84,8 @@ class ChordRest : public DurationElement {
 
       virtual void writeProperties(XmlWriter& xml) const;
       virtual bool readProperties(XmlReader&);
-      virtual void scanElements(void* data, void (*func)(void*, Element*), bool all=true);
+      virtual void readAddConnector(ConnectorInfoReader* info, bool pasteMode) override;
+      virtual void scanElements(void* data, void (*func)(void*, Element*), bool all=true) override;
 
       void setBeamMode(Beam::Mode m)            { _beamMode = m;    }
       void undoSetBeamMode(Beam::Mode m);
@@ -96,7 +96,6 @@ class ChordRest : public DurationElement {
       int beams() const                         { return _durationType.hooks(); }
       virtual qreal upPos()   const = 0;
       virtual qreal downPos() const = 0;
-      virtual qreal centerX() const = 0;
 
       int line(bool up) const                   { return up ? upLine() : downLine(); }
       int line() const                          { return _up ? upLine() : downLine(); }
@@ -109,9 +108,6 @@ class ChordRest : public DurationElement {
       bool up() const                           { return _up;   }
       void setUp(bool val)                      { _up = val; }
 
-      QVector<Articulation*>& articulations()     { return _articulations; }
-      const QVector<Articulation*>& articulations() const { return _articulations; }
-      Articulation* hasArticulation(const Articulation*);
 
       bool small() const                        { return _small; }
       void setSmall(bool val);
@@ -120,9 +116,6 @@ class ChordRest : public DurationElement {
       int staffMove() const                     { return _staffMove; }
       void setStaffMove(int val)                { _staffMove = val; }
       virtual int vStaffIdx() const override    { return staffIdx() + _staffMove;  }
-
-//      void layout0(AccidentalState*);
-      void layoutArticulations();
 
       const TDuration durationType() const      { return _crossMeasure == CrossMeasure::FIRST ?
                                                       _crossMeasureTDur : _durationType;        }
@@ -146,7 +139,6 @@ class ChordRest : public DurationElement {
       std::vector<Lyrics*>& lyrics()             { return _lyrics; }
       Lyrics* lyrics(int verse, Placement) const;
       int lastVerse(Placement) const;
-      void flipLyrics(Lyrics*);
 
       virtual void add(Element*);
       virtual void remove(Element*);
@@ -163,13 +155,13 @@ class ChordRest : public DurationElement {
       TDuration crossMeasureDurationType() const      { return _crossMeasureTDur;   }
       void setCrossMeasureDurationType(TDuration v)   { _crossMeasureTDur = v;      }
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
       bool isGrace() const;
       bool isGraceBefore() const;
       bool isGraceAfter() const;
-      void writeBeam(XmlWriter& xml);
+      void writeBeam(XmlWriter& xml) const;
       Segment* nextSegmentAfterCR(SegmentType types) const;
 
       virtual void setScore(Score* s) override;
@@ -187,6 +179,8 @@ class ChordRest : public DurationElement {
 
       bool isFullMeasureRest() const { return _durationType == TDuration::DurationType::V_MEASURE; }
       virtual void removeMarkings(bool keepTremolo = false);
+
+      bool isBefore(ChordRest*);
       };
 
 

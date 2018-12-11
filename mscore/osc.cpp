@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Music Composition & Notation
-//  $Id: musescore.cpp 4961 2011-11-11 16:24:17Z lasconic $
 //
 //  Copyright (C) 2002-2011 Werner Schweer and others
 //
@@ -30,11 +29,13 @@
 #include "libmscore/note.h"
 #include "libmscore/undo.h"
 #include "mixer.h"
+#include "parteditbase.h"
 #include "scoreview.h"
 #include "playpanel.h"
 #include "preferences.h"
 #include "seq.h"
 #include "synthesizer/msynthesizer.h"
+#include "shortcut.h"
 
 #ifdef OSC
 #include "ofqf/qoscserver.h"
@@ -61,9 +62,9 @@ void MuseScore::initOsc()
 
 void MuseScore::initOsc()
       {
-      if (!preferences.useOsc)
+      if (!preferences.getBool(PREF_IO_OSC_USEREMOTECONTROL))
             return;
-      int port = preferences.oscPort;
+      int port = preferences.getInt(PREF_IO_OSC_PORTNUMBER);
       QOscServer* osc = new QOscServer(port, qApp);
 
       PathObject* oo = new PathObject( "/addpitch", QVariant::Int, osc);
@@ -259,7 +260,7 @@ void MuseScore::oscColorNote(QVariantList list)
                         for (Note* note : chord->notes()) {
                               if (note->pitch() == pitch) {
                                     cs->startCmd();
-                                    cs->undo(new ChangeProperty(note, P_ID::COLOR, noteColor));
+                                    cs->undo(new ChangeProperty(note, Pid::COLOR, noteColor));
                                     cs->endCmd();
                                     return;
                                     }
@@ -294,10 +295,10 @@ void MuseScore::oscVolChannel(double val)
             MidiMapping mm = mms->at(i);
             Channel* channel = mm.articulation;
             int iv = lrint(val*127);
-            seq->setController(channel->channel, CTRL_VOLUME, iv);
-            channel->volume = iv;
+            seq->setController(channel->channel(), CTRL_VOLUME, iv);
+            channel->setVolume(val * 100.0);
             if (mixer)
-                  mixer->partEdit(i)->volume->setValue(iv);
+                  mixer->getPartAtIndex(i)->volume->setValue(val * 100.0);
             }
       }
 
@@ -317,10 +318,10 @@ void MuseScore::oscPanChannel(double val)
             MidiMapping mm = mms->at(i);
             Channel* channel = mm.articulation;
             int iv = lrint((val + 1) * 64);
-            seq->setController(channel->channel, CTRL_PANPOT, iv);
-            channel->volume = iv;
+            seq->setController(channel->channel(), CTRL_PANPOT, iv);
+            channel->setPan(val * 180.0);
             if (mixer)
-                  mixer->partEdit(i)->pan->setValue(iv);
+                  mixer->getPartAtIndex(i)->pan->setValue(val * 100.0);
             }
       }
 
@@ -339,9 +340,9 @@ void MuseScore::oscMuteChannel(double val)
       if (i >= 0 && i < mms->size()) {
             MidiMapping mm = mms->at(i);
             Channel* channel = mm.articulation;
-            channel->mute = (val==0.0f ? false : true);
+            channel->setMute(val==0.0f ? false : true);
             if (mixer)
-                  mixer->partEdit(i)->mute->setChecked(channel->mute);
+                  mixer->getPartAtIndex(i)->mute->setChecked(channel->mute());
             }
       }
 #endif // #ifndef OSC

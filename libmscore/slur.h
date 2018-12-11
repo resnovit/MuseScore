@@ -22,7 +22,7 @@ namespace Ms {
 ///    a single segment of slur; also used for Tie
 //---------------------------------------------------------
 
-class SlurSegment : public SlurTieSegment {
+class SlurSegment final : public SlurTieSegment {
 
    protected:
       virtual void changeAnchor(EditData&, Element*);
@@ -32,7 +32,7 @@ class SlurSegment : public SlurTieSegment {
       SlurSegment(const SlurSegment& ss) : SlurTieSegment(ss) {}
 
       virtual SlurSegment* clone() const override  { return new SlurSegment(*this); }
-      virtual ElementType type() const override  { return ElementType::SLUR_SEGMENT; }
+      virtual ElementType type() const override    { return ElementType::SLUR_SEGMENT; }
       virtual int subtype() const override         { return static_cast<int>(spanner()->type()); }
       virtual QString subtypeName() const override { return name(spanner()->type()); }
       virtual void draw(QPainter*) const override;
@@ -52,28 +52,27 @@ class SlurSegment : public SlurTieSegment {
 //   @@ Slur
 //---------------------------------------------------------
 
-class Slur : public SlurTie {
+class Slur final : public SlurTie {
 
       void slurPosChord(SlurPos*);
 
    public:
       Slur(Score* = 0);
-      ~Slur();
+      ~Slur() {}
       virtual Slur* clone() const override        { return new Slur(*this); }
       virtual ElementType type() const override { return ElementType::SLUR; }
       virtual void write(XmlWriter& xml) const override;
-      virtual void read(XmlReader&) override;
       virtual void layout() override;
       virtual SpannerSegment* layoutSystem(System*) override;
       virtual void setTrack(int val) override;
       virtual void slurPos(SlurPos*) override;
 
-      bool readProperties(XmlReader&);
-
-      SlurSegment* frontSegment() const   { return (SlurSegment*)spannerSegments().front(); }
-      SlurSegment* backSegment() const    { return (SlurSegment*)spannerSegments().back();  }
-      SlurSegment* takeLastSegment()      { return (SlurSegment*)spannerSegments().takeLast(); }
-      SlurSegment* segmentAt(int n) const { return (SlurSegment*)spannerSegments().at(n); }
+      SlurSegment* frontSegment()               { return toSlurSegment(Spanner::frontSegment()); }
+      const SlurSegment* frontSegment() const   { return toSlurSegment(Spanner::frontSegment()); }
+      SlurSegment* backSegment()                { return toSlurSegment(Spanner::backSegment());  }
+      const SlurSegment* backSegment() const    { return toSlurSegment(Spanner::backSegment());  }
+      SlurSegment* segmentAt(int n)             { return toSlurSegment(Spanner::segmentAt(n));   }
+      const SlurSegment* segmentAt(int n) const { return toSlurSegment(Spanner::segmentAt(n));   }
       virtual SlurTieSegment* newSlurTieSegment() override { return new SlurSegment(score()); }
       };
 

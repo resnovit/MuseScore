@@ -61,8 +61,11 @@
 #include "libmscore/articulation.h"
 #include "libmscore/ottava.h"
 #include "libmscore/rehearsalmark.h"
+#include "libmscore/fermata.h"
 
 #include "importmxmllogger.h"
+#include "importmxmlnoteduration.h"
+#include "importmxmlnotepitch.h"
 #include "importmxmlpass2.h"
 #include "musicxmlfonthandler.h"
 #include "musicxmlsupport.h"
@@ -85,8 +88,8 @@ namespace Ms {
 //---------------------------------------------------------
 
 MusicXmlTupletDesc::MusicXmlTupletDesc()
-      : type(MxmlStartStop::NONE), placement(Element::Placement::BELOW),
-      bracket(Tuplet::BracketType::AUTO_BRACKET), shownumber(Tuplet::NumberType::SHOW_NUMBER)
+      : type(MxmlStartStop::NONE), placement(Placement::BELOW),
+      bracket(TupletBracketType::AUTO_BRACKET), shownumber(TupletNumberType::SHOW_NUMBER)
       {
       // nothing
       }
@@ -166,74 +169,6 @@ void MusicXmlLyricsExtend::setExtend(const int no, const int track, const int ti
       foreach(Lyrics* l, list) {
             _lyrics.remove(l);
             }
-      }
-
-//---------------------------------------------------------
-//   noteTypeToFraction
-//---------------------------------------------------------
-
-/**
- Convert MusicXML note type to fraction.
- */
-
-static Fraction noteTypeToFraction(const QString& type)
-      {
-      if (type == "1024th")
-            return Fraction(1, 1024);
-      else if (type == "512th")
-            return Fraction(1, 512);
-      else if (type == "256th")
-            return Fraction(1, 256);
-      else if (type == "128th")
-            return Fraction(1, 128);
-      else if (type == "64th")
-            return Fraction(1, 64);
-      else if (type == "32nd")
-            return Fraction(1, 32);
-      else if (type == "16th")
-            return Fraction(1, 16);
-      else if (type == "eighth")
-            return Fraction(1, 8);
-      else if (type == "quarter")
-            return Fraction(1, 4);
-      else if (type == "half")
-            return Fraction(1, 2);
-      else if (type == "whole")
-            return Fraction(1, 1);
-      else if (type == "breve")
-            return Fraction(2, 1);
-      else if (type == "long")
-            return Fraction(4, 1);
-      else if (type == "maxima")
-            return Fraction(8, 1);
-      else
-            return Fraction(0, 0);
-      }
-
-//---------------------------------------------------------
-//   calculateFraction
-//---------------------------------------------------------
-
-/**
- Convert note type, number of dots and actual and normal notes into a duration
- */
-
-static Fraction calculateFraction(const QString& type, const int dots, const Fraction timeMod)
-      {
-      // type
-      Fraction f = noteTypeToFraction(type);
-      if (f.isValid()) {
-            // dot(s)
-            Fraction f_no_dots = f;
-            for (int i = 0; i < dots; ++i)
-                  f += (f_no_dots / (2 << i));
-            // tuplet
-            if (timeMod.isValid())
-                  f *= timeMod;
-            // clean up (just in case)
-            f.reduce();
-            }
-      return f;
       }
 
 //---------------------------------------------------------
@@ -447,7 +382,7 @@ static bool hasDrumset(const MusicXMLDrumset& mxmlDrumset)
 // determine if the part contains a drumset
 // this is the case if any instrument has a midi-unpitched element,
 // (which stored in the MusicXMLDrumInstrument pitch field)
-// if the part contains a drumset, Drumset drumset is intialized
+// if the part contains a drumset, Drumset drumset is initialized
 
 static void initDrumset(Drumset* drumset, const MusicXMLDrumset& mxmlDrumset)
       {
@@ -500,12 +435,12 @@ static Instrument createInstrument(const MusicXMLDrumInstrument& mxmlInstr)
             // set articulations to default (global articulations)
             instr.setArticulation(articulation);
             // set default program
-            instr.channel(0)->program = mxmlInstr.midiProgram >= 0 ? mxmlInstr.midiProgram : 0;
+            instr.channel(0)->setProgram(mxmlInstr.midiProgram >= 0 ? mxmlInstr.midiProgram : 0);
             }
 
       // add / overrule with values read from MusicXML
-      instr.channel(0)->pan = mxmlInstr.midiPan;
-      instr.channel(0)->volume = mxmlInstr.midiVolume;
+      instr.channel(0)->setPan(mxmlInstr.midiPan);
+      instr.channel(0)->setVolume(mxmlInstr.midiVolume);
       instr.setTrackName(mxmlInstr.name);
 
       return instr;
@@ -559,10 +494,10 @@ static void setStaffTypePercussion(Part* part, Drumset* drumset)
       {
       for (int j = 0; j < part->nstaves(); ++j)
             if (part->staff(j)->lines(0) == 5 && !part->staff(j)->isDrumStaff(0))
-                  part->staff(j)->setStaffType(0, StaffType::preset(StaffTypes::PERC_DEFAULT));
+                  part->staff(j)->setStaffType(0, *StaffType::preset(StaffTypes::PERC_DEFAULT));
       // set drumset for instrument
       part->instrument()->setDrumset(drumset);
-      part->instrument()->channel(0)->bank = 128;
+      part->instrument()->channel(0)->setBank(128);
       part->instrument()->channel(0)->updateInitList();
       }
 
@@ -842,34 +777,13 @@ static void addLyric(MxmlLogger* logger, const QXmlStreamReader* const xmlreader
 static void addLyrics(MxmlLogger* logger, const QXmlStreamReader* const xmlreader,
                       ChordRest* cr,
                       QMap<int, Lyrics*>& numbrdLyrics,
-                      QMap<int, Lyrics*>& defyLyrics,
-                      QList<Lyrics*>& unNumbrdLyrics,
                       QSet<Lyrics*>& extLyrics,
                       MusicXmlLyricsExtend& extendedLyrics)
       {
-      // first the lyrics with valid number
       int lyricNo = -1;
       for (QMap<int, Lyrics*>::const_iterator i = numbrdLyrics.constBegin(); i != numbrdLyrics.constEnd(); ++i) {
-            lyricNo = i.key(); // use number obtained from MusicXML file
+            lyricNo = i.key();
             Lyrics* l = i.value();
-            addLyric(logger, xmlreader, cr, l, lyricNo, extendedLyrics);
-            if (extLyrics.contains(l))
-                  extendedLyrics.addLyric(l);
-            }
-
-      // then the lyrics without valid number but with valid default-y
-      for (QMap<int, Lyrics*>::const_iterator i = defyLyrics.constBegin(); i != defyLyrics.constEnd(); ++i) {
-            lyricNo++; // use sequence number
-            Lyrics* l = i.value();
-            addLyric(logger, xmlreader, cr, l, lyricNo, extendedLyrics);
-            if (extLyrics.contains(l))
-                  extendedLyrics.addLyric(l);
-            }
-
-      // finally the remaining lyrics, which are simply added in order they appear in the MusicXML file
-      for (QList<Lyrics*>::const_iterator i = unNumbrdLyrics.constBegin(); i != unNumbrdLyrics.constEnd(); ++i) {
-            lyricNo++; // use sequence number
-            Lyrics* l = *i;
             addLyric(logger, xmlreader, cr, l, lyricNo, extendedLyrics);
             if (extLyrics.contains(l))
                   extendedLyrics.addLyric(l);
@@ -887,9 +801,10 @@ static void addElemOffset(Element* el, int track, const QString& placement, Meas
        el, track, qPrintable(placement), tick);
        */
 
+#if 0 // ws: use placement for symbols
       // move to correct position
       // TODO: handle rx, ry
-      if (el->type() == ElementType::SYMBOL) {
+      if (el->isSymbol()) {
             qreal y = 0;
             // calc y offset assuming five line staff and default style
             // note that required y offset is element type dependent
@@ -907,9 +822,10 @@ static void addElemOffset(Element* el, int track, const QString& placement, Meas
             el->setUserOff(QPoint(0, y));
             }
       else {
-            el->setPlacement(placement == "above"
-                             ? Element::Placement::ABOVE : Element::Placement::BELOW);
+            el->setPlacement(placement == "above" ? Placement::ABOVE : Placement::BELOW);
             }
+#endif
+      el->setPlacement(placement == "above" ? Placement::ABOVE : Placement::BELOW);
 
       el->setTrack(track);
       Segment* s = measure->getSegment(SegmentType::ChordRest, tick);
@@ -1045,7 +961,7 @@ static void determineTupletTypeAndCount(Tuplet* t, int& tupletType, int& tupletC
  and type and number of smallest notes in the tuplet.
 
  Example: baselen of a 3:2 tuplet with 1/16, 1/8, 1/8 and 1/16
- is 1/8. For this tuplet smalles note is 1/16, count is 6.
+ is 1/8. For this tuplet smallest note is 1/16, count is 6.
  */
 
 // TODO: this is defined twice, remove one
@@ -1124,6 +1040,53 @@ static bool isTupletFilled(Tuplet* t, TDuration normalType)
       }
 
 //---------------------------------------------------------
+//   handleTupletStart
+//---------------------------------------------------------
+
+static void handleTupletStart(const ChordRest* const cr, Tuplet*& tuplet,
+                              const int actualNotes, const int normalNotes,
+                              const MusicXmlTupletDesc& tupletDesc)
+      {
+      tuplet = new Tuplet(cr->score());
+      tuplet->setTrack(cr->track());
+      tuplet->setRatio(Fraction(actualNotes, normalNotes));
+      tuplet->setTick(cr->tick());
+      tuplet->setBracketType(tupletDesc.bracket);
+      tuplet->setNumberType(tupletDesc.shownumber);
+      // TODO type, placement, bracket
+      tuplet->setParent(cr->measure());
+      }
+
+//---------------------------------------------------------
+//   handleTupletStop
+//---------------------------------------------------------
+
+static void handleTupletStop(Tuplet*& tuplet, const int normalNotes)
+      {
+      // allow handleTupletStop to be called w/o error of no tuplet active
+      if (!tuplet) return;
+
+      // set baselen
+      TDuration td = determineTupletBaseLen(tuplet);
+      //qDebug("stop tuplet %p basetype %d", tuplet, td.ticks());
+      tuplet->setBaseLen(td);
+      Fraction f(normalNotes, td.fraction().denominator());
+      f.reduce();
+      tuplet->setDuration(f);
+      // TODO determine usefulness of following check
+      int totalDuration = 0;
+      foreach (DurationElement* de, tuplet->elements()) {
+            if (de->type() == ElementType::CHORD || de->type() == ElementType::REST) {
+                  totalDuration+=de->globalDuration().ticks();
+                  }
+            }
+      if (!(totalDuration && normalNotes)) {
+            qDebug("MusicXML::import: tuplet stop but bad duration"); // TODO
+            }
+      tuplet = 0;
+      }
+
+//---------------------------------------------------------
 //   addTupletToChord
 //---------------------------------------------------------
 
@@ -1146,12 +1109,13 @@ void addTupletToChord(ChordRest* cr, Tuplet*& tuplet, bool& tuplImpl,
 
       // check for obvious errors
       if (tupletDesc.type == MxmlStartStop::START && tuplet) {
-            qDebug("tuplet already started"); // TODO
-            // TODO: how to recover ?
+            qDebug("tuplet already started");
+            // recover by simply stopping the current tuplet first
+            handleTupletStop(tuplet, normalNotes);
             }
       if (tupletDesc.type == MxmlStartStop::STOP && !tuplet) {
             qDebug("tuplet stop but no tuplet started"); // TODO
-            // TODO: how to recover ?
+            // recovery handled later (automatically, no special case needed)
             }
 
       // Tuplet are either started by the tuplet start
@@ -1167,14 +1131,7 @@ void addTupletToChord(ChordRest* cr, Tuplet*& tuplet, bool& tuplImpl,
                   else
                         tuplImpl = false;
                   // create a new tuplet
-                  tuplet = new Tuplet(cr->score());
-                  tuplet->setTrack(cr->track());
-                  tuplet->setRatio(Fraction(actualNotes, normalNotes));
-                  tuplet->setTick(cr->tick());
-                  tuplet->setBracketType(tupletDesc.bracket);
-                  tuplet->setNumberType(tupletDesc.shownumber);
-                  // TODO type, placement, bracket
-                  tuplet->setParent(cr->measure());
+                  handleTupletStart(cr, tuplet, actualNotes, normalNotes, tupletDesc);
                   }
             }
 
@@ -1196,24 +1153,7 @@ void addTupletToChord(ChordRest* cr, Tuplet*& tuplet, bool& tuplImpl,
             if (tupletDesc.type == MxmlStartStop::STOP
                 || (tuplImpl && isTupletFilled(tuplet, normalType))
                 || (actualNotes == 1 && normalNotes == 1)) {
-                  // set baselen
-                  TDuration td = determineTupletBaseLen(tuplet);
-                  // qDebug("stop tuplet %p basetype %d", tuplet, tupletType);
-                  tuplet->setBaseLen(td);
-                  Fraction f(normalNotes, td.fraction().denominator());
-                  f.reduce();
-                  tuplet->setDuration(f);
-                  // TODO determine usefulness of following check
-                  int totalDuration = 0;
-                  foreach (DurationElement* de, tuplet->elements()) {
-                        if (de->type() == ElementType::CHORD || de->type() == ElementType::REST) {
-                              totalDuration+=de->globalDuration().ticks();
-                              }
-                        }
-                  if (!(totalDuration && normalNotes)) {
-                        qDebug("MusicXML::import: tuplet stop but bad duration"); // TODO
-                        }
-                  tuplet = 0;
+                  handleTupletStop(tuplet, normalNotes);
                   }
             }
       }
@@ -1222,14 +1162,9 @@ void addTupletToChord(ChordRest* cr, Tuplet*& tuplet, bool& tuplImpl,
 //   addArticulationToChord
 //---------------------------------------------------------
 
-/**
- Add Articulation to Chord.
- */
-
 static void addArticulationToChord(ChordRest* cr, SymId articSym, QString dir)
       {
-      Articulation* na = new Articulation(cr->score());
-      na->setSymId(articSym);
+      Articulation* na = new Articulation(articSym, cr->score());
       if (dir == "up") {
             na->setUp(true);
             na->setAnchor(ArticulationAnchor::TOP_STAFF);
@@ -1239,6 +1174,21 @@ static void addArticulationToChord(ChordRest* cr, SymId articSym, QString dir)
             na->setAnchor(ArticulationAnchor::BOTTOM_STAFF);
             }
       cr->add(na);
+      }
+
+//---------------------------------------------------------
+//   addFermataToChord
+//---------------------------------------------------------
+
+static void addFermataToChord(ChordRest* cr, SymId articSym, bool up)
+      {
+      Fermata* na = new Fermata(articSym, cr->score());
+      na->setTrack(cr->track());
+      na->setPlacement(up ? Placement::ABOVE : Placement::BELOW);
+      if (cr->segment() == nullptr && cr->isGrace())
+            cr->el().push_back(na);       // store for later move to segment
+      else
+            cr->segment()->add(na);
       }
 
 //---------------------------------------------------------
@@ -1260,7 +1210,7 @@ static void addMordentToChord(ChordRest* cr, QString name, QString attrLong, QSt
             else if (attrLong == "yes" && attrAppr == "below" && attrDep == "")
                   articSym = SymId::ornamentUpPrall;
             else if (attrLong == "yes" && attrAppr == "above" && attrDep == "")
-                  articSym = SymId::ornamentDownPrall;
+                  articSym = SymId::ornamentPrecompMordentUpperPrefix;
             else if (attrLong == "yes" && attrAppr == "" && attrDep == "below")
                   articSym = SymId::ornamentPrallDown;
             else if (attrLong == "yes" && attrAppr == "" && attrDep == "above")
@@ -1375,12 +1325,11 @@ static NoteHead::Group convertNotehead(QString mxmlName)
  Add Text to Note.
  */
 
-static void addTextToNote(int l, int c, QString txt, SubStyle style, Score* score, Note* note)
+static void addTextToNote(int l, int c, QString txt, Tid style, Score* score, Note* note)
       {
       if (note) {
             if (!txt.isEmpty()) {
-                  Text* t = new Fingering(score);
-                  t->initSubStyle(style);
+                  TextBase* t = new Fingering(score, style);
                   t->setPlainText(txt);
                   note->add(t);
                   }
@@ -1401,9 +1350,9 @@ static void addTextToNote(int l, int c, QString txt, SubStyle style, Score* scor
 static void addFermata(ChordRest* cr, const QString type, const SymId articSym)
       {
       if (type == "upright" || type == "")
-            addArticulationToChord(cr, articSym, "up");
+            addFermataToChord(cr, articSym, true);
       else if (type == "inverted")
-            addArticulationToChord(cr, articSym, "down");
+            addFermataToChord(cr, articSym, false);
       else
             qDebug("unknown fermata type '%s'", qPrintable(type));
       }
@@ -1425,6 +1374,7 @@ static void setSLinePlacement(SLine* sli, const QString placement)
        sli, sli->type(), sli->score()->spatium(), qPrintable(placement));
        */
 
+#if 0
       // calc y offset assuming five line staff and default style
       // note that required y offset is element type dependent
       if (sli->type() == ElementType::HAIRPIN) {
@@ -1443,9 +1393,10 @@ static void setSLinePlacement(SLine* sli, const QString placement)
                   }
             }
       else {
-            sli->setPlacement(placement == "above"
-                              ? Element::Placement::ABOVE : Element::Placement::BELOW);
+            sli->setPlacement(placement == "above" ? Placement::ABOVE : Placement::BELOW);
             }
+#endif
+      sli->setPlacement(placement == "above" ? Placement::ABOVE : Placement::BELOW);
       }
 
 //---------------------------------------------------------
@@ -1492,6 +1443,22 @@ MusicXMLParserPass2::MusicXMLParserPass2(Score* score, MusicXMLParserPass1& pass
       }
 
 //---------------------------------------------------------
+//   resetTuplets
+//---------------------------------------------------------
+
+static void resetTuplets(QVector<Tuplet*>& tuplets, QVector<bool>& tuplImpls)
+      {
+      for (auto& tuplet : tuplets) {
+            if (tuplet) {
+                  qDebug("tuplet not stopped at end of measure");
+                  handleTupletStop(tuplet, 2);
+                  }
+            tuplet = nullptr;
+            }
+      for (auto& tuplImpl : tuplImpls) tuplImpl = false;
+      }
+
+//---------------------------------------------------------
 //   initPartState
 //---------------------------------------------------------
 
@@ -1512,7 +1479,7 @@ void MusicXMLParserPass2::initPartState(const QString& partId)
       _lastVolta = 0;
       _hasDrumset = false;
       for (int i = 0; i < MAX_NUMBER_LEVEL; ++i)
-            _slur[i] = SlurDesc();
+            _slurs[i] = SlurDesc();
       for (int i = 0; i < MAX_BRACKETS; ++i)
             _brackets[i] = 0;
       for (int i = 0; i < MAX_DASHES; ++i)
@@ -1816,7 +1783,7 @@ void MusicXMLParserPass2::part()
       // determine if the part contains a drumset
       // this is the case if any instrument has a midi-unpitched element,
       // (which stored in the MusicXMLDrumInstrument pitch field)
-      // if the part contains a drumset, Drumset drumset is intialized
+      // if the part contains a drumset, Drumset drumset is initialized
 
       Drumset* drumset = new Drumset;
       const MusicXMLDrumset& mxmlDrumsetAfterPass2 = _pass1.getDrumset(id);
@@ -1858,8 +1825,8 @@ void MusicXMLParserPass2::part()
 
 static Measure* findMeasure(Score* score, const int tick)
       {
-      for (Measure* m = score->firstMeasure();; m = m->nextMeasure()) {
-            if (m && m->tick() == tick)
+      for (Measure* m = score->firstMeasure(); m; m = m->nextMeasure()) {
+            if (m->tick() == tick)
                   return m;
             }
       return 0;
@@ -2038,8 +2005,17 @@ static void addGraceChordsAfter(Chord* c, GraceChordList& gcl, int& gac)
 
 static void addGraceChordsBefore(Chord* c, GraceChordList& gcl)
       {
-      for (int i = gcl.size() - 1; i >= 0; i--)
-            c->add(gcl.at(i));        // TODO check if same voice ?
+      for (int i = gcl.size() - 1; i >= 0; i--) {
+            Chord* gc = gcl.at(i);
+            for (Element* e : gc->el()) {
+                  if (e->isFermata()) {
+                        c->segment()->add(e);
+                        gc->el().remove(e);
+                        break;                  // out of the door, line on the left, one cross each
+                        }
+                  }
+            c->add(gc);        // TODO check if same voice ?
+            }
       gcl.clear();
       }
 
@@ -2202,6 +2178,9 @@ void MusicXMLParserPass2::measure(const QString& partId,
             // measure is first measure after a multi-measure rest
             measure->setBreakMultiMeasureRest(true);
             }
+
+      // prevent tuplets from crossing measure boundaries
+      resetTuplets(_tuplets, _tuplImpls);
 
       Q_ASSERT(_e.isEndElement() && _e.name() == "measure");
       }
@@ -2392,7 +2371,7 @@ void MusicXMLParserPass2::measureStyle(Measure* measure)
                   int multipleRest = _e.readElementText().toInt();
                   if (multipleRest > 1) {
                         _multiMeasureRestCount = multipleRest;
-                        _score->style().set(StyleIdx::createMultiMeasureRests, true);
+                        _score->style().set(Sid::createMultiMeasureRests, true);
                         measure->setBreakMultiMeasureRest(true);
                         }
                   else
@@ -2434,7 +2413,7 @@ void MusicXMLParserPass2::print(Measure* measure)
                   }
             }
       if (pm) {
-            if (preferences.musicxmlImportBreaks && (newSystem || newPage)) {
+            if (preferences.getBool(PREF_IMPORT_MUSICXML_IMPORTBREAKS) && (newSystem || newPage)) {
                   if (!pm->lineBreak() && !pm->pageBreak()) {
                         LayoutBreak* lb = new LayoutBreak(_score);
                         lb->setLayoutBreakType(newSystem ? LayoutBreak::Type::LINE : LayoutBreak::Type::PAGE);
@@ -2511,7 +2490,7 @@ void MusicXMLParserDirection::direction(const QString& partId,
       // create text if any text was found
 
       if (_wordsText != "" || _rehearsalText != "" || _metroText != "") {
-            Text* t = 0;
+            TextBase* t = 0;
             if (_tpoSound > 0.1) {
                   _tpoSound /= 60;
                   t = new TempoText(_score);
@@ -2531,19 +2510,18 @@ void MusicXMLParserDirection::direction(const QString& partId,
                               _rehearsalText = "<b></b>" + _rehearsalText;  // explicitly turn bold off
                         t->setXmlText(_rehearsalText);
                         if (!_hasDefaultY)
-                              t->setPlacement(Element::Placement::ABOVE);  // crude way to force placement TODO improve ?
+                              t->setPlacement(Placement::ABOVE);  // crude way to force placement TODO improve ?
                         }
                   }
 
             if (_enclosure == "circle") {
-                  t->setHasFrame(true);
-                  t->setCircle(true);
+                  t->setFrameType(FrameType::CIRCLE);
                   }
             else if (_enclosure == "none") {
-                  t->setHasFrame(false);
+                  t->setFrameType(FrameType::NO_FRAME);
                   }
             else if (_enclosure == "rectangle") {
-                  t->setHasFrame(true);
+                  t->setFrameType(FrameType::SQUARE);
                   t->setFrameRound(0);
                   }
 
@@ -2811,13 +2789,11 @@ static Marker* findMarker(const QString& repeat, Score* score)
             m->setMarkerType(Marker::Type::CODA);
             }
       else if (repeat == "fine") {
-            m = new Marker(score);
-            m->initSubStyle(SubStyle::REPEAT_RIGHT);
+            m = new Marker(score, Tid::REPEAT_RIGHT);
             m->setMarkerType(Marker::Type::FINE);
             }
       else if (repeat == "toCoda") {
-            m = new Marker(score);
-            m->initSubStyle(SubStyle::REPEAT_RIGHT);
+            m = new Marker(score, Tid::REPEAT_RIGHT);
             m->setMarkerType(Marker::Type::TOCODA);
             }
       return m;
@@ -3046,7 +3022,7 @@ void MusicXMLParserDirection::pedal(const QString& type, const int /* number */,
             // TBD: what happens when an unknown pedal type is found ?
             Symbol* s = new Symbol(_score);
             s->setAlign(Align::LEFT | Align::BASELINE);
-            s->setOffsetType(OffsetType::SPATIUM);
+            //s->setOffsetType(OffsetType::SPATIUM);
             if (type == "start")
                   s->setSym(SymId::keyboardPedalPed);
             else if (type == "stop")
@@ -3165,6 +3141,10 @@ QString MusicXMLParserDirection::metronome(double& r)
       TDuration dur2;
 
       while (_e.readNextStartElement()) {
+            if (_e.name() == "metronome-note" || _e.name() == "metronome-relation") {
+                  skipLogCurrElem();
+                  continue;
+                  }
             QString txt = _e.readElementText();
             if (_e.name() == "beat-unit") {
                   // set first dur that is still invalid
@@ -3321,7 +3301,6 @@ void MusicXMLParserPass2::barline(const QString& partId, Measure* measure)
                   int track = _pass1.trackForPart(partId);
                   if (barStyle == "tick") {
                         BarLine* b = new BarLine(measure->score());
-                        int track = _pass1.trackForPart(partId);
                         b->setTrack(track);
                         b->setBarLineType(BarLineType::NORMAL);
                         b->setSpanStaff(false);
@@ -3332,7 +3311,6 @@ void MusicXMLParserPass2::barline(const QString& partId, Measure* measure)
                         }
                   else if (barStyle == "short") {
                         BarLine* b = new BarLine(measure->score());
-                        int track = _pass1.trackForPart(partId);
                         b->setTrack(track);
                         b->setBarLineType(BarLineType::NORMAL);
                         b->setSpanStaff(0);
@@ -3413,57 +3391,6 @@ void MusicXMLParserPass2::doEnding(const QString& partId, Measure* measure,
                         }
                   }
             }
-      }
-
-//---------------------------------------------------------
-//   isAppr
-//---------------------------------------------------------
-
-/**
- Check if v approximately equals ref.
- Used to prevent floating point comparison for equality from failing
- */
-
-static bool isAppr(const double v, const double ref, const double epsilon)
-      {
-      return v > ref - epsilon && v < ref + epsilon;
-      }
-
-//---------------------------------------------------------
-//   microtonalGuess
-//---------------------------------------------------------
-
-/**
- Convert a MusicXML alter tag into a microtonal accidental in MuseScore enum AccidentalType.
- Works only for quarter tone, half tone, three-quarters tone and whole tone accidentals.
- */
-
-static AccidentalType microtonalGuess(double val)
-      {
-      const double eps = 0.001;
-      if (isAppr(val, -2, eps))
-            return AccidentalType::FLAT2;
-      else if (isAppr(val, -1.5, eps))
-            return AccidentalType::MIRRORED_FLAT2;
-      else if (isAppr(val, -1, eps))
-            return AccidentalType::FLAT;
-      else if (isAppr(val, -0.5, eps))
-            return AccidentalType::MIRRORED_FLAT;
-      else if (isAppr(val, 0, eps))
-            return AccidentalType::NATURAL;
-      else if (isAppr(val, 0.5, eps))
-            return AccidentalType::SHARP_SLASH;
-      else if (isAppr(val, 1, eps))
-            return AccidentalType::SHARP;
-      else if (isAppr(val, 1.5, eps))
-            return AccidentalType::SHARP_SLASH4;
-      else if (isAppr(val, 2, eps))
-            return AccidentalType::SHARP2;
-      else
-            qDebug("Guess for microtonal accidental corresponding to value %f failed.", val);  // TODO
-
-      // default
-      return AccidentalType::NONE;
       }
 
 //---------------------------------------------------------
@@ -3747,7 +3674,9 @@ void MusicXMLParserPass2::clef(const QString& partId, Measure* measure, const in
             }
       else if (c == "percussion") {
             clef = ClefType::PERC;
-            st = StaffTypes::PERC_DEFAULT;
+            if (_hasDrumset) {
+                  st = StaffTypes::PERC_DEFAULT;
+                  }
             }
       else if (c == "TAB") {
             clef = ClefType::TAB;
@@ -3764,13 +3693,12 @@ void MusicXMLParserPass2::clef(const QString& partId, Measure* measure, const in
       s->add(clefs);
 
       // set the correct staff type
-      // note that this overwrites the staff lines value set in pass 1
-      // also note that clef handling should probably done in pass1
+      // note that clef handling should probably done in pass1
       int staffIdx = _score->staffIdx(part) + clefno;
       int lines = _score->staff(staffIdx)->lines(0);
-      if (st == StaffTypes::TAB_DEFAULT || (_hasDrumset && st == StaffTypes::PERC_DEFAULT)) {
-            _score->staff(staffIdx)->setStaffType(0, StaffType::preset(st));
-            _score->staff(staffIdx)->setLines(0, lines); // preserve previously set staff lines
+      if (tick == 0) { // changing staff type not supported (yet ?)
+            _score->staff(staffIdx)->setStaffType(tick, *StaffType::preset(st));
+            _score->staff(staffIdx)->setLines(tick, lines); // preserve previously set staff lines
             _score->staff(staffIdx)->setBarLineTo(0);    // default
             }
       }
@@ -3863,11 +3791,7 @@ void MusicXMLParserPass2::time(const QString& partId, Measure* measure, const in
             int btp = 0; // beat-type as integer
             if (determineTimeSig(beats, beatType, timeSymbol, st, bts, btp)) {
                   _timeSigDura = Fraction(bts, btp);
-                  // TODO: verify if fractionTSig handling must be copied from DOM parser
                   Fraction fractionTSig = Fraction(bts, btp);
-                  _score->sigmap()->add(tick, fractionTSig);
-                  //Part* part = score->staff(staff)->part();
-                  //int staves = part->nstaves();
                   for (int i = 0; i < _pass1.getPart(partId)->nstaves(); ++i) {
                         TimeSig* timesig = new TimeSig(_score);
                         timesig->setVisible(printObject);
@@ -4178,47 +4102,65 @@ static void handleDisplayStep(ChordRest* cr, int step, int octave, int tick, qre
             //qDebug(" clef=%hhd po=%d step=%d", clef, po, step);
             int dp = 7 * (octave + 2) + step;
             //qDebug(" dp=%d po-dp=%d", dp, po-dp);
-            cr->setUserYoffset((po - dp + 3) * spatium / 2);
+            cr->ryoffset() = (po - dp + 3) * spatium / 2;
             }
       }
 
 //---------------------------------------------------------
-//   displayStepOctave
+//   setNoteHead
 //---------------------------------------------------------
 
 /**
- Handle <display-step> and <display-octave> for <rest> and <unpitched>
+ Set the notehead parameters.
  */
 
-static void displayStepOctave(QXmlStreamReader& e,
-                              int& step,
-                              int& oct)
+static void setNoteHead(Note* note, const QColor noteheadColor, const bool noteheadParentheses, const QString& noteheadFilled)
       {
-      Q_ASSERT(e.isStartElement()
-               && (e.name() == "rest" || e.name() == "unpitched"));
+      const auto score = note->score();
 
-      while (e.readNextStartElement()) {
-            if (e.name() == "display-step") {
-                  QString strStep = e.readElementText();
-                  int pos = QString("CDEFGAB").indexOf(strStep);
-                  if (strStep.size() == 1 && pos >=0 && pos < 7)
-                        step = pos;
-                  else
-                        //logError(QString("invalid step '%1'").arg(strStep));
-                        qDebug("invalid step '%s'", qPrintable(strStep));  // TODO
+      if (noteheadColor != QColor::Invalid)
+            note->setColor(noteheadColor);
+      if (noteheadParentheses) {
+            auto s = new Symbol(score);
+            s->setSym(SymId::noteheadParenthesisLeft);
+            s->setParent(note);
+            score->addElement(s);
+            s = new Symbol(score);
+            s->setSym(SymId::noteheadParenthesisRight);
+            s->setParent(note);
+            score->addElement(s);
+            }
+
+      if (noteheadFilled == "no")
+            note->setHeadType(NoteHead::Type::HEAD_HALF);
+      else if (noteheadFilled == "yes")
+            note->setHeadType(NoteHead::Type::HEAD_QUARTER);
+      }
+
+//---------------------------------------------------------
+//   addFiguredBassElemens
+//---------------------------------------------------------
+
+/**
+ Add the figured bass elements.
+ */
+
+static void addFiguredBassElemens(FiguredBassList& fbl, const Fraction noteStartTime, const int msTrack,
+                                  const Fraction dura, Measure* measure)
+      {
+      if (!fbl.isEmpty()) {
+            auto sTick = noteStartTime.ticks();              // starting tick
+            foreach (FiguredBass* fb, fbl) {
+                  fb->setTrack(msTrack);
+                  // No duration tag defaults ticks() to 0; set to note value
+                  if (fb->ticks() == 0)
+                        fb->setTicks(dura.ticks());
+                  // TODO: set correct onNote value
+                  Segment* s = measure->getSegment(SegmentType::ChordRest, sTick);
+                  s->add(fb);
+                  sTick += fb->ticks();
                   }
-            else if (e.name() == "display-octave") {
-                  QString strOct = e.readElementText();
-                  bool ok;
-                  oct = strOct.toInt(&ok);
-                  if (!ok || oct < 0 || oct > 9) {
-                        //logError(QString("invalid octave '%1'").arg(strOct));
-                        qDebug("invalid octave '%s'", qPrintable(strOct)); // TODO
-                        oct = -1;
-                        }
-                  }
-            else
-                  e.skipCurrentElement();             // TODO log
+            fbl.clear();
             }
       }
 
@@ -4250,41 +4192,38 @@ Note* MusicXMLParserPass2::note(const QString& partId,
             return 0;
             }
 
-      int alter = 0;
       bool chord = false;
       bool cue = false;
       bool small = false;
-      int dots = 0;
       bool grace = false;
-      int octave = -1;
-      bool bRest = false;
+      bool rest = false;
       int staff = 1;
-      int step = 0;
-      Fraction timeMod(0, 0); // invalid (will handle "present but incorrect" as "not present")
       QString type;
       QString voice;
-      AccidentalType accType = AccidentalType::NONE; // set based on alter value (can be microtonal)
-      Accidental* acc = 0;                               // created based on accidental element
       Direction stemDir = Direction::AUTO;
       bool noStem = false;
       NoteHead::Group headGroup = NoteHead::Group::HEAD_NORMAL;
+      QColor noteColor = QColor::Invalid;
+      noteColor.setNamedColor(_e.attributes().value("color").toString());
       QColor noteheadColor = QColor::Invalid;
       bool noteheadParentheses = false;
       QString noteheadFilled;
       int velocity = round(_e.attributes().value("dynamics").toDouble() * 0.9);
       bool graceSlash = false;
       bool printObject = _e.attributes().value("print-object") != "no";
-      TDuration normalType;
       Beam::Mode bm  = Beam::Mode::AUTO;
-      int displayStep = -1;       // invalid
-      int displayOctave = -1; // invalid
-      bool unpitched = false;
-      QString instrId;
+      QString instrumentId;
 
+      mxmlNoteDuration mnd(_divs, _logger);
+      mxmlNotePitch mnp(_logger);
 
       while (_e.readNextStartElement() && !elementMustBePostponed(_e)) {
-            if (_e.name() == "accidental")
-                  acc = accidental();
+            if (mnp.readProperties(_e, _score)) {
+                  // element handled
+                  }
+            else if (mnd.readProperties(_e)) {
+                  // element handled
+                  }
             else if (_e.name() == "beam")
                   beam(bm);
             else if (_e.name() == "chord") {
@@ -4295,19 +4234,13 @@ Note* MusicXMLParserPass2::note(const QString& partId,
                   cue = true;
                   _e.readNext();
                   }
-            else if (_e.name() == "dot") {
-                  dots++;
-                  _e.readNext();
-                  }
-            else if (_e.name() == "duration")
-                  duration(dura);
             else if (_e.name() == "grace") {
                   grace = true;
                   graceSlash = _e.attributes().value("slash") == "yes";
                   _e.readNext();
                   }
             else if (_e.name() == "instrument") {
-                  instrId = _e.attributes().value("id").toString();
+                  instrumentId = _e.attributes().value("id").toString();
                   _e.readNext();
                   }
             else if (_e.name() == "notehead") {
@@ -4316,35 +4249,24 @@ Note* MusicXMLParserPass2::note(const QString& partId,
                   noteheadFilled = _e.attributes().value("filled").toString();
                   headGroup = convertNotehead(_e.readElementText());
                   }
-            else if (_e.name() == "pitch")
-                  pitch(step, alter, octave, accType);
             else if (_e.name() == "rest") {
-                  bRest = true;
-                  rest(displayStep, displayOctave);
+                  rest = true;
+                  mnp.displayStepOctave(_e);
                   }
             else if (_e.name() == "staff") {
-                  QString strStaff = _e.readElementText();
-                  staff = strStaff.toInt();
-                  // Bug fix for Cubase 6.5.5 which generates <staff>2</staff> in a single staff part
-                  // Same fix is required in pass 1 and pass 2
-                  Part* part = _pass1.getPart(partId);
-                  Q_ASSERT(part);
-                  if (staff <= 0 || staff > part->nstaves()) {
-                        _logger->logError(QString("illegal staff '%1'").arg(strStaff), &_e);
+                  auto ok = false;
+                  auto strStaff = _e.readElementText();
+                  staff = strStaff.toInt(&ok);
+                  if (!ok) {
+                        // error already reported in pass 1
                         staff = 1;
                         }
                   }
             else if (_e.name() == "stem")
                   stem(stemDir, noStem);
-            else if (_e.name() == "time-modification")
-                  timeModification(timeMod, normalType);
             else if (_e.name() == "type") {
                   small = _e.attributes().value("size") == "cue";
                   type = _e.readElementText();
-                  }
-            else if (_e.name() == "unpitched") {
-                  unpitched = true;
-                  displayStepOctave(_e, displayStep, displayOctave);
                   }
             else if (_e.name() == "voice")
                   voice = _e.readElementText();
@@ -4367,81 +4289,10 @@ Note* MusicXMLParserPass2::note(const QString& partId,
       if (voice == "")
             voice = "1";
 
-      // accidental handling
-      //qDebug("note acc %p type %hhd acctype %hhd",
-      //       acc, acc ? acc->accidentalType() : static_cast<Ms::AccidentalType>(0), accType);
-      if (!acc && accType != AccidentalType::NONE) {
-            acc = new Accidental(_score);
-            acc->setAccidentalType(accType);
-            }
-
-      //_logger->logDebugInfo(e, QString("dura %1 valid %2").arg(dura.print()).arg(dura.isValid()), &_e);
-      // normalize duration
-      if (dura.isValid())
-            dura.reduce();
-
-      // timing error check(s)
-      // note that all passes must calculate the same timing and other (TODO) checks
-      QString errorStr;
-      Fraction calcDura = calculateFraction(type, dots, timeMod);
-      /*
-      _logger->logDebugInfo(e, QString("dura %1 valid %2 fraction %3 valid %4")
-                   .arg(dura.print()).arg(dura.isValid())
-                   .arg(fraction.print()).arg(fraction.isValid()),
-                   &_e
-                   );
-       */
-      bool wholeMeasureRest = isWholeMeasureRest(bRest, type, dura, Fraction::fromTicks(measure->ticks()));
-      if (dura.isValid() && calcDura.isValid()) {
-            if (dura != calcDura) {
-                  errorStr = QString("calculated duration (%1) not equal to specified duration (%2)")
-                        .arg(calcDura.print()).arg(dura.print());
-
-                  if (wholeMeasureRest) {
-                        // do not report an error for whole measure rests
-                        errorStr = "";
-                        }
-                  else if (grace && dura == Fraction(0, 1)) {
-                        // grace note (not an error)
-                        errorStr = "";
-                        }
-                  else {
-                        const int maxDiff = 3; // maximum difference considered a rounding error
-                        if (qAbs(calcDura.ticks() - dura.ticks()) <= maxDiff) {
-                              errorStr += " -> assuming rounding error";
-                              dura = calcDura;
-                              }
-                        }
-
-                  // Special case:
-                  // Encore generates rests in tuplets w/o <tuplet> or <time-modification>.
-                  // Detect this by comparing the actual duration with the expected duration
-                  // based on note type. If actual is 2/3 of expected, the rest is part
-                  // of a tuplet.
-                  if (bRest && !timeMod.isValid()) {
-                        if (2 * calcDura.ticks() == 3 * dura.ticks()) {
-                              timeMod = Fraction(2, 3);
-                              errorStr += " -> assuming triplet";
-                              }
-                        }
-                  }
-            }
-      else if (dura.isValid()) {
-            // do not report an error for typeless (whole measure) rests
-            if (!wholeMeasureRest)
-                  errorStr = QString("calculated duration invalid, using specified duration (%1)").arg(dura.print());
-            }
-      else if (calcDura.isValid()) {
-            if (!grace) {
-                  errorStr = QString("specified duration invalid, using calculated duration (%1)").arg(calcDura.print());
-                  dura = calcDura; // overrule dura
-                  }
-            }
-      else {
-            errorStr = "calculated and specified duration invalid, using 4/4";
-            dura = Fraction(4, 4);
-            }
-
+      // check for timing error(s) and set dura
+      // keep in this order as checkTiming() might change dura
+      auto errorStr = mnd.checkTiming(type, rest, grace);
+      dura = mnd.dura();
       if (errorStr != "")
             _logger->logError(errorStr, &_e);
 
@@ -4476,12 +4327,14 @@ Note* MusicXMLParserPass2::note(const QString& partId,
                   }
 #endif
             // end experimental fix for testVoiceMapper*
+
+            Q_ASSERT(_e.isEndElement() && _e.name() == "note");
             return 0;
             }
       else {
             }
 
-      TDuration duration = determineDuration(bRest, type, dots, dura, Fraction::fromTicks(measure->ticks()));
+      TDuration duration = determineDuration(rest, type, mnd.dots(), dura, Fraction::fromTicks(measure->ticks()));
 
       ChordRest* cr = 0;
       Note* note = 0;
@@ -4491,7 +4344,7 @@ Note* MusicXMLParserPass2::note(const QString& partId,
       // - prevTime for others
       const Fraction noteStartTime = chord ? prevSTime : sTime;
 
-      if (bRest) {
+      if (rest) {
             int track = msTrack + msVoice;
             cr = addRest(_score, measure, noteStartTime.ticks(), track, msMove,
                          duration, dura);
@@ -4507,8 +4360,10 @@ Note* MusicXMLParserPass2::note(const QString& partId,
                   else
                         cr->setBeamMode(Beam::Mode::NONE);
                   cr->setSmall(small);
+                  if (noteColor != QColor::Invalid)
+                        cr->setColor(noteColor);
                   cr->setVisible(printObject);
-                  handleDisplayStep(cr, displayStep, displayOctave, noteStartTime.ticks(), _score->spatium());
+                  handleDisplayStep(cr, mnp.displayStep(), mnp.displayOctave(), noteStartTime.ticks(), _score->spatium());
                   }
             }
       else {
@@ -4558,25 +4413,10 @@ Note* MusicXMLParserPass2::note(const QString& partId,
             note = new Note(_score);
             note->setSmall(small);
             note->setHeadGroup(headGroup);
-            if (noteheadColor != QColor::Invalid)
-                  note->setColor(noteheadColor);
+            if (noteColor != QColor::Invalid)
+                  note->setColor(noteColor);
+            setNoteHead(note, noteheadColor, noteheadParentheses, noteheadFilled);
             note->setVisible(printObject); // TODO also set the stem to invisible
-
-            if (noteheadParentheses) {
-                  Symbol* s = new Symbol(_score);
-                  s->setSym(SymId::noteheadParenthesisLeft);
-                  s->setParent(note);
-                  _score->addElement(s);
-                  s = new Symbol(_score);
-                  s->setSym(SymId::noteheadParenthesisRight);
-                  s->setParent(note);
-                  _score->addElement(s);
-                  }
-
-            if (noteheadFilled == "no")
-                  note->setHeadType(NoteHead::Type::HEAD_HALF);
-            else if (noteheadFilled == "yes")
-                  note->setHeadType(NoteHead::Type::HEAD_QUARTER);
 
             if (velocity > 0) {
                   note->setVeloType(Note::ValueType::USER_VAL);
@@ -4584,26 +4424,26 @@ Note* MusicXMLParserPass2::note(const QString& partId,
                   }
 
             const MusicXMLDrumset& mxmlDrumset = _pass1.getDrumset(partId);
-            if (unpitched) {
+            if (mnp.unpitched()) {
                   //&& drumsets.contains(partId)
                   if (_hasDrumset
-                      && mxmlDrumset.contains(instrId)) {
+                      && mxmlDrumset.contains(instrumentId)) {
                         // step and oct are display-step and ...-oct
                         // get pitch from instrument definition in drumset instead
-                        int pitch = mxmlDrumset[instrId].pitch;
-                        note->setPitch(pitch);
+                        int pitch = mxmlDrumset[instrumentId].pitch;
+                        note->setPitch(limit(pitch, 0, 127));
                         // TODO - does this need to be key-aware?
                         note->setTpc(pitch2tpc(pitch, Key::C, Prefer::NEAREST)); // TODO: necessary ?
                         }
                   else {
                         //qDebug("disp step %d oct %d", displayStep, displayOctave);
-                        xmlSetPitch(note, displayStep, 0, displayOctave, 0, _pass1.getPart(partId)->instrument());
+                        xmlSetPitch(note, mnp.displayStep(), 0, mnp.displayOctave(), 0, _pass1.getPart(partId)->instrument());
                         }
                   }
             else {
                   int ottavaStaff = (msTrack - _pass1.trackForPart(partId)) / VOICES;
                   int octaveShift = _pass1.octaveShift(partId, ottavaStaff, noteStartTime);
-                  xmlSetPitch(note, step, alter, octave, octaveShift, _pass1.getPart(partId)->instrument());
+                  xmlSetPitch(note, mnp.step(), mnp.alter(), mnp.octave(), octaveShift, _pass1.getPart(partId)->instrument());
                   }
 
             // set drumset information
@@ -4611,11 +4451,11 @@ Note* MusicXMLParserPass2::note(const QString& partId,
             // line and stem direction, while a MusicXML file contains actuals.
             // the MusicXML values for each note are simply copied to the defaults
 
-            if (unpitched) {
+            if (mnp.unpitched()) {
                   // determine staff line based on display-step / -octave and clef type
                   ClefType clef = c->staff()->clef(noteStartTime.ticks());
                   int po = ClefInfo::pitchOffset(clef);
-                  int pitch = MusicXMLStepAltOct2Pitch(displayStep, 0, displayOctave);
+                  int pitch = MusicXMLStepAltOct2Pitch(mnp.displayStep(), 0, mnp.displayOctave());
                   int line = po - absStep(pitch);
 
                   // correct for number of staff lines
@@ -4643,15 +4483,25 @@ Note* MusicXMLParserPass2::note(const QString& partId,
                   }
                    */
                   // this should be done in pass 1, would make _pass1 const here
-                  _pass1.setDrumsetDefault(partId, instrId, headGroup, line, stemDir);
+                  _pass1.setDrumsetDefault(partId, instrumentId, headGroup, line, stemDir);
+                  }
+
+            // accidental handling
+            //qDebug("note acc %p type %hhd acctype %hhd",
+            //       acc, acc ? acc->accidentalType() : static_cast<Ms::AccidentalType>(0), accType);
+            Accidental* acc = mnp.acc();
+            if (!acc && mnp.accType() != AccidentalType::NONE) {
+                  acc = new Accidental(_score);
+                  acc->setAccidentalType(mnp.accType());
                   }
 
             if (acc) {
                   note->add(acc);
                   // save alter value for user accidental
                   if (acc->accidentalType() != AccidentalType::NONE)
-                        alt = alter;
+                        alt = mnp.alter();
                   }
+
             c->add(note);
             //c->setStemDirection(stemDir); // already done in handleBeamAndStemDir()
             c->setNoStem(noStem);
@@ -4670,8 +4520,6 @@ Note* MusicXMLParserPass2::note(const QString& partId,
       // at a StartElement instead of the usual EndElement
 
       QMap<int, Lyrics*> numberedLyrics; // lyrics with valid number
-      QMap<int, Lyrics*> defaultyLyrics; // lyrics with valid default-y
-      QList<Lyrics*> unNumberedLyrics;   // lyrics with neither
       QSet<Lyrics*> extendedLyrics;      // lyrics with the extend flag set
       MusicXmlTupletDesc tupletDesc;
       bool lastGraceAFter = false;       // set by notations() if end of grace after sequence found
@@ -4682,7 +4530,7 @@ Note* MusicXMLParserPass2::note(const QString& partId,
             if (_e.name() == "lyric") {
                   // lyrics on grace notes not (yet) supported by MuseScore
                   if (!grace)
-                        lyric(numberedLyrics, defaultyLyrics, unNumberedLyrics, extendedLyrics);  // TODO: move track handling to addlyric
+                        lyric(partId, numberedLyrics, extendedLyrics);  // TODO: move track handling to addlyric
                   else {
                         _logger->logDebugInfo("ignoring lyrics on grace notes", &_e);
                         skipLogCurrElem();
@@ -4710,43 +4558,37 @@ Note* MusicXMLParserPass2::note(const QString& partId,
       if (grace && lastGraceAFter)
             gac = gcl.size();
 
-      if (!chord && !grace) {
-            // do tuplet if valid time-modification is not 1/1 and is not 1/2 (tremolo)
-            if (timeMod.isValid() && timeMod != Fraction(1, 1) && timeMod != Fraction(1, 2)) {
+      if (cr) {
+            if (!chord && !grace) {
+                  // do tuplet if valid time-modification is not 1/1 and is not 1/2 (tremolo)
+                  auto timeMod = mnd.timeMod();
                   // find part-relative track
-                  Part* part = _pass1.getPart(partId);
+                  auto part = _pass1.getPart(partId);
                   Q_ASSERT(part);
-                  int scoreRelStaff = _score->staffIdx(part); // zero-based number of parts first staff in the score
-                  int partRelTrack = msTrack + msVoice - scoreRelStaff * VOICES;
-                  addTupletToChord(cr, _tuplets[partRelTrack], _tuplImpls[partRelTrack], timeMod, tupletDesc, normalType);
+                  auto scoreRelStaff = _score->staffIdx(part); // zero-based number of parts first staff in the score
+                  auto partRelTrack = msTrack + msVoice - scoreRelStaff * VOICES;
+                  if (timeMod.isValid() && timeMod != Fraction(1, 1) && timeMod != Fraction(1, 2)) {
+                        addTupletToChord(cr, _tuplets[partRelTrack], _tuplImpls[partRelTrack], timeMod, tupletDesc, mnd.normalType());
+                        }
+                  else if (_tuplets[partRelTrack]) {
+                        // stop any still incomplete tuplet
+                        handleTupletStop(_tuplets[partRelTrack], 2);
+                        }
                   }
             }
 
       // add lyrics found by lyric
       if (cr) {
             // add lyrics and stop corresponding extends
-            addLyrics(_logger, &_e, cr, numberedLyrics, defaultyLyrics, unNumberedLyrics, extendedLyrics, _extendedLyrics);
-            if (bRest) {
+            addLyrics(_logger, &_e, cr, numberedLyrics, extendedLyrics, _extendedLyrics);
+            if (rest) {
                   // stop all extends
                   _extendedLyrics.setExtend(-1, cr->track(), cr->tick());
                   }
             }
 
       // add figured bass element
-      if (!fbl.isEmpty()) {
-            int sTick = noteStartTime.ticks();        // starting tick
-            foreach (FiguredBass* fb, fbl) {
-                  fb->setTrack(msTrack);
-                  // No duration tag defaults ticks() to 0; set to note value
-                  if (fb->ticks() == 0)
-                        fb->setTicks(dura.ticks());
-                  // TODO: set correct onNote value
-                  Segment* s = measure->getSegment(SegmentType::ChordRest, sTick);
-                  s->add(fb);
-                  sTick += fb->ticks();
-                  }
-            fbl.clear();
-            }
+      addFiguredBassElemens(fbl, noteStartTime, msTrack, dura, measure);
 
       // don't count chord or grace note duration
       // note that this does not check the MusicXML requirement that notes in a chord
@@ -4754,6 +4596,8 @@ Note* MusicXMLParserPass2::note(const QString& partId,
       if (chord || grace)
             dura.set(0, 1);
 
+      if (!(_e.isEndElement() && _e.name() == "note"))
+            qDebug("name %s line %lld", qPrintable(_e.name().toString()), _e.lineNumber());
       Q_ASSERT(_e.isEndElement() && _e.name() == "note");
 
       return note;
@@ -4832,8 +4676,10 @@ void MusicXMLParserPass2::duration(Fraction& dura)
       dura.set(0, 0);        // invalid unless set correctly
       int intDura = _e.readElementText().toInt();
       if (intDura > 0) {
-            if (_divs > 0)
+            if (_divs > 0) {
                   dura.set(intDura, 4 * _divs);
+                  dura.reduce(); // prevent overflow in later Fraction operations
+                  }
             else
                   _logger->logError(QString("illegal or uninitialized divisions (%1)").arg(_divs), &_e);
             }
@@ -5047,8 +4893,8 @@ void MusicXMLParserPass2::harmony(const QString& partId, Measure* measure, const
       double rx = 0.0;        // 0.1 * e.attribute("relative-x", "0").toDouble();
       double ry = 0.0;        // -0.1 * e.attribute("relative-y", "0").toDouble();
 
-      double styleYOff = _score->textStyle(SubStyle::HARMONY).offset().y();
-      OffsetType offsetType = _score->textStyle(SubStyle::HARMONY).offsetType();
+      double styleYOff = _score->textStyle(Tid::HARMONY).offset().y();
+      OffsetType offsetType = _score->textStyle(Tid::HARMONY).offsetType();
       if (offsetType == OffsetType::ABS) {
             styleYOff = styleYOff * DPMM / _score->spatium();
             }
@@ -5222,39 +5068,6 @@ void MusicXMLParserPass2::harmony(const QString& partId, Measure* measure, const
       }
 
 //---------------------------------------------------------
-//   accidental
-//---------------------------------------------------------
-
-/**
- Parse the /score-partwise/part/measure/note/accidental node.
- Return the result as an Accidental.
- */
-
-Accidental* MusicXMLParserPass2::accidental()
-      {
-      Q_ASSERT(_e.isStartElement() && _e.name() == "accidental");
-
-      bool cautionary = _e.attributes().value("cautionary") == "yes";
-      bool editorial = _e.attributes().value("editorial") == "yes";
-      bool parentheses = _e.attributes().value("parentheses") == "yes";
-
-      QString s = _e.readElementText();
-      AccidentalType type = mxmlString2accidentalType(s);
-
-      if (type != AccidentalType::NONE) {
-            Accidental* a = new Accidental(_score);
-            a->setAccidentalType(type);
-            if (editorial || cautionary || parentheses) {
-                  a->setBracket(AccidentalBracket(cautionary || parentheses));
-                  a->setRole(AccidentalRole::USER);
-                  }
-            return a;
-            }
-
-      return 0;
-      }
-
-//---------------------------------------------------------
 //   beam
 //---------------------------------------------------------
 
@@ -5333,121 +5146,6 @@ void MusicXMLParserPass2::backup(Fraction& dura)
       }
 
 //---------------------------------------------------------
-//   timeModification
-//---------------------------------------------------------
-
-/**
- Parse the /score-partwise/part/measure/note/time-modification node.
- */
-
-void MusicXMLParserPass2::timeModification(Fraction& timeMod, TDuration& normalType)
-      {
-      Q_ASSERT(_e.isStartElement() && _e.name() == "time-modification");
-
-      int intActual = 0;
-      int intNormal = 0;
-      QString strActual;
-      QString strNormal;
-
-      while (_e.readNextStartElement()) {
-            if (_e.name() == "actual-notes")
-                  strActual = _e.readElementText();
-            else if (_e.name() == "normal-notes")
-                  strNormal = _e.readElementText();
-            else if (_e.name() == "normal-type") {
-                  // "measure" is not a valid normal-type,
-                  // but would be accepted by setType()
-                  QString strNormalType = _e.readElementText();
-                  if (strNormalType != "measure")
-                        normalType.setType(strNormalType);
-                  }
-            else
-                  skipLogCurrElem();
-            }
-
-      intActual = strActual.toInt();
-      intNormal = strNormal.toInt();
-      if (intActual > 0 && intNormal > 0)
-            timeMod.set(intNormal, intActual);
-      else {
-            timeMod.set(0, 0); // invalid
-            _logger->logError(QString("illegal time-modification: actual-notes %1 normal-notes %2")
-                              .arg(strActual).arg(strNormal), &_e);
-            }
-      }
-
-//---------------------------------------------------------
-//   pitch
-//---------------------------------------------------------
-
-/**
- Parse the /score-partwise/part/measure/note/pitch node.
- */
-
-void MusicXMLParserPass2::pitch(int& step, int& alter, int& oct, AccidentalType& accid)
-      {
-      Q_ASSERT(_e.isStartElement() && _e.name() == "pitch");
-
-      // defaults
-      step = -1;
-      alter = 0;
-      oct = -1;
-
-      while (_e.readNextStartElement()) {
-            if (_e.name() == "alter") {
-                  QString strAlter = _e.readElementText();
-                  bool ok;
-                  alter = MxmlSupport::stringToInt(strAlter, &ok); // fractions not supported by mscore
-                  if (!ok || alter < -2.5 || alter > 2.5) {
-                        _logger->logError(QString("invalid alter '%1'").arg(strAlter), &_e);
-                        bool ok2;
-                        double altervalue = strAlter.toDouble(&ok2);
-                        if (ok2 && (qAbs(altervalue) < 2.0) && (accid == AccidentalType::NONE)) {
-                              // try to see if a microtonal accidental is needed
-                              accid = microtonalGuess(altervalue);
-                              }
-                        alter = 0;
-                        }
-                  }
-            else if (_e.name() == "octave") {
-                  QString strOct = _e.readElementText();
-                  bool ok;
-                  oct = strOct.toInt(&ok);
-                  if (!ok || oct < 0 || oct > 9) {
-                        _logger->logError(QString("invalid octave '%1'").arg(strOct), &_e);
-                        oct = -1;
-                        }
-                  }
-            else if (_e.name() == "step") {
-                  QString strStep = _e.readElementText();
-                  int pos = QString("CDEFGAB").indexOf(strStep);
-                  if (strStep.size() == 1 && pos >=0 && pos < 7)
-                        step = pos;
-                  else
-                        _logger->logError(QString("invalid step '%1'").arg(strStep), &_e);
-                  }
-            else
-                  skipLogCurrElem();
-            }
-      //qDebug("pitch step %d alter %d oct %d accid %hhd", step, alter, oct, accid);
-      }
-
-//---------------------------------------------------------
-//   rest
-//---------------------------------------------------------
-
-/**
- Parse the /score-partwise/part/measure/note/rest node.
- */
-
-void MusicXMLParserPass2::rest(int& step, int& octave)
-      {
-      Q_ASSERT(_e.isStartElement() && _e.name() == "rest");
-
-      displayStepOctave(_e, step, octave);
-      }
-
-//---------------------------------------------------------
 //   lyric -- parse a MusicXML lyric element
 //---------------------------------------------------------
 
@@ -5455,9 +5153,8 @@ void MusicXMLParserPass2::rest(int& step, int& octave)
  Parse the /score-partwise/part/measure/note/lyric node.
  */
 
-void MusicXMLParserPass2::lyric(QMap<int, Lyrics*>& numbrdLyrics,
-                                QMap<int, Lyrics*>& defyLyrics,
-                                QList<Lyrics*>& unNumbrdLyrics,
+void MusicXMLParserPass2::lyric(const QString& partId,
+                                QMap<int, Lyrics*>& numbrdLyrics,
                                 QSet<Lyrics*>& extLyrics)
       {
       Q_ASSERT(_e.isStartElement() && _e.name() == "lyric");
@@ -5466,8 +5163,9 @@ void MusicXMLParserPass2::lyric(QMap<int, Lyrics*>& numbrdLyrics,
       // TODO in addlyrics: l->setTrack(trk);
 
       bool hasExtend = false;
-      QString strLyricNo = _e.attributes().value("number").toString();
-      QString strDefaultY = _e.attributes().value("default-y").toString();
+      QString lyricNumber = _e.attributes().value("number").toString();
+      QColor lyricColor = QColor::Invalid;
+      lyricColor.setNamedColor(_e.attributes().value("color").toString());
       QString extendType;
       QString formattedText;
 
@@ -5512,418 +5210,454 @@ void MusicXMLParserPass2::lyric(QMap<int, Lyrics*>& numbrdLyrics,
             return;
             }
 
-      // put lyric on correct list to be able determine line number later
-      bool ok = true;
-      int lyricNo = strLyricNo.toInt(&ok) - 1;
-      if (ok) {
-            if (lyricNo < 0) {
-                  qDebug("invalid lyrics number (<0)");       // TODO
-                  delete l;
-                  return;
-                  }
-            else if (lyricNo > MAX_LYRICS) {
-                  qDebug("too much lyrics (>%d)", MAX_LYRICS);       // TODO
-                  delete l;
-                  return;
-                  }
-            else {
-                  numbrdLyrics[lyricNo] = l;
-                  }
+      auto mxmlPart = _pass1.getMusicXmlPart(partId);
+      auto lyricNo = mxmlPart.lyricNumberHandler().getLyricNo(lyricNumber);
+      if (lyricNo < 0) {
+            _logger->logError("invalid lyrics number (<0)", &_e);
+            delete l;
+            return;
             }
-      else {
-            int defaultY = strDefaultY.toInt(&ok);
-            if (ok)
-                  // invert default-y as it decreases with increasing lyric number
-                  defyLyrics[-defaultY] = l;
-            else
-                  unNumbrdLyrics.append(l);
+      else if (lyricNo > MAX_LYRICS) {
+            _logger->logError(QString("too much lyrics (>%1)").arg(MAX_LYRICS), &_e);
+            delete l;
+            return;
             }
+      else if (numbrdLyrics.contains(lyricNo)) {
+            _logger->logError(QString("duplicate lyrics number (%1)").arg(lyricNumber), &_e);
+            delete l;
+            return;
+            }
+
+      numbrdLyrics[lyricNo] = l;
 
       if (hasExtend && (extendType == "" || extendType == "start"))
             extLyrics.insert(l);
 
       //qDebug("formatted lyric '%s'", qPrintable(formattedText));
       l->setXmlText(formattedText);
+      if (lyricColor != QColor::Invalid)
+            l->setColor(lyricColor);
       }
 
-
 //---------------------------------------------------------
-//   notations
+//   slur
 //---------------------------------------------------------
-
 
 /**
- Parse the /score-partwise/part/measure/note/notations node.
+ Parse the /score-partwise/part/measure/note/notations/slur node.
+ */
+
+void MusicXMLParserPass2::slur(ChordRest* cr, const int tick, const int track, bool& lastGraceAFter)
+      {
+      Q_ASSERT(_e.isStartElement() && _e.name() == "slur");
+
+      int slurNo   = _e.attributes().value("number").toString().toInt();
+      if (slurNo > 0) slurNo--;
+      QString slurType = _e.attributes().value("type").toString();
+      QString lineType  = _e.attributes().value("line-type").toString();
+      if (lineType == "") lineType = "solid";
+
+      // PriMus Music-Notation by Columbussoft (build 10093) generates overlapping
+      // slurs that do not have a number attribute to distinguish them.
+      // The duplicates must be ignored, to prevent memory allocation issues,
+      // which caused a MuseScore crash
+      // Similar issues happen with Sibelius 7.1.3 (direct export)
+
+      if (slurType == "start") {
+            if (_slurs[slurNo].isStart())
+                  // slur start when slur already started: report error
+                  _logger->logError(QString("ignoring duplicate slur start"), &_e);
+            else if (_slurs[slurNo].isStop()) {
+                  // slur start when slur already stopped: wrap up
+                  Slur* newSlur = _slurs[slurNo].slur();
+                  newSlur->setTick(tick);
+                  newSlur->setStartElement(cr);
+                  _slurs[slurNo] = SlurDesc();
+                  }
+            else {
+                  // slur start for new slur: init
+                  Slur* newSlur = new Slur(_score);
+                  if (cr->isGrace())
+                        newSlur->setAnchor(Spanner::Anchor::CHORD);
+                  if (lineType == "dotted")
+                        newSlur->setLineType(1);
+                  else if (lineType == "dashed")
+                        newSlur->setLineType(2);
+                  newSlur->setTick(tick);
+                  newSlur->setStartElement(cr);
+                  QString pl = _e.attributes().value("placement").toString();
+                  if (pl == "above")
+                        newSlur->setSlurDirection(Direction::UP);
+                  else if (pl == "below")
+                        newSlur->setSlurDirection(Direction::DOWN);
+                  newSlur->setTrack(track);
+                  newSlur->setTrack2(track);
+                  _slurs[slurNo].start(newSlur);
+                  _score->addElement(newSlur);
+                  }
+            }
+      else if (slurType == "stop") {
+            if (_slurs[slurNo].isStart()) {
+                  // slur stop when slur already started: wrap up
+                  Slur* newSlur = _slurs[slurNo].slur();
+                  if (!(cr->isGrace())) {
+                        newSlur->setTick2(tick);
+                        newSlur->setTrack2(track);
+                        }
+                  newSlur->setEndElement(cr);
+                  _slurs[slurNo] = SlurDesc();
+                  }
+            else if (_slurs[slurNo].isStop())
+                  // slur stop when slur already stopped: report error
+                  _logger->logError(QString("ignoring duplicate slur stop"), &_e);
+            else {
+                  // slur stop for new slur: init
+                  Slur* newSlur = new Slur(_score);
+                  if (!(cr->isGrace())) {
+                        newSlur->setTick2(tick);
+                        newSlur->setTrack2(track);
+                        }
+                  newSlur->setEndElement(cr);
+                  _slurs[slurNo].stop(newSlur);
+                  }
+            // any grace note containing a slur stop means
+            // last note of a grace after set has been found
+            if (cr->isGrace())
+                  lastGraceAFter = true;
+            }
+      else if (slurType == "continue")
+            ;        // ignore
+      else
+            _logger->logError(QString("unknown slur type %1").arg(slurType), &_e);
+
+      _e.readNext();
+      }
+
+//---------------------------------------------------------
+//   tied
+//---------------------------------------------------------
+
+/**
+ Parse the /score-partwise/part/measure/note/notations/tied node.
+ */
+
+void MusicXMLParserPass2::tied(Note* note, const int track)
+      {
+      Q_ASSERT(_e.isStartElement() && _e.name() == "tied");
+
+      QString tiedType = _e.attributes().value("type").toString();
+      if (tiedType == "start") {
+            if (_tie) {
+                  _logger->logError(QString("Tie already active"), &_e);
+                  }
+            else if (note) {
+                  _tie = new Tie(_score);
+                  note->setTieFor(_tie);
+                  _tie->setStartNote(note);
+                  _tie->setTrack(track);
+                  QString tiedOrientation = _e.attributes().value("orientation").toString();
+                  if (tiedOrientation == "over")
+                        _tie->setSlurDirection(Direction::UP);
+                  else if (tiedOrientation == "under")
+                        _tie->setSlurDirection(Direction::DOWN);
+                  else if (tiedOrientation == "auto")
+                        ;        // ignore
+                  else if (tiedOrientation == "")
+                        ;        // ignore
+                  else
+                        _logger->logError(QString("unknown tied orientation: %1").arg(tiedOrientation), &_e);
+
+                  QString lineType  = _e.attributes().value("line-type").toString();
+                  if (lineType == "dotted")
+                        _tie->setLineType(1);
+                  else if (lineType == "dashed")
+                        _tie->setLineType(2);
+                  _tie = 0;
+                  }
+            }
+      else if (tiedType == "stop")
+            ;        // ignore
+      else
+            _logger->logError(QString("unknown tied type %").arg(tiedType), &_e);
+
+      _e.readNext();
+      }
+
+//---------------------------------------------------------
+//   dynamics
+//---------------------------------------------------------
+
+/**
+ Parse the /score-partwise/part/measure/note/notations/dynamics node.
+ */
+
+void MusicXMLParserPass2::dynamics(QString& placement, QStringList& dynamicslist)
+      {
+      Q_ASSERT(_e.isStartElement() && _e.name() == "dynamics");
+
+      placement = _e.attributes().value("placement").toString();
+      if (preferences.getBool(PREF_IMPORT_MUSICXML_IMPORTLAYOUT)) {
+            // ry        = ee.attribute(QString("relative-y"), "0").toDouble() * -.1;
+            // rx        = ee.attribute(QString("relative-x"), "0").toDouble() * .1;
+            // yoffset   = _e.attributes().value("default-y").toDouble(&hasYoffset) * -0.1;
+            // xoffset   = ee.attribute("default-x", "0.0").toDouble() * 0.1;
+            }
+      while (_e.readNextStartElement()) {
+            if (_e.name() == "other-dynamics")
+                  dynamicslist.push_back(_e.readElementText());
+            else {
+                  dynamicslist.push_back(_e.name().toString());
+                  _e.readNext();
+                  }
+            }
+      }
+
+//---------------------------------------------------------
+//   articulations
+//---------------------------------------------------------
+
+/**
+ Parse the /score-partwise/part/measure/note/notations/articulations node.
  Note that some notations attach to notes only in MuseScore,
  which means trying to attach them to a rest will crash,
  as in that case note is 0.
  */
 
-void MusicXMLParserPass2::notations(Note* note, ChordRest* cr, const int tick,
-                                    MusicXmlTupletDesc& tupletDesc, bool& lastGraceAFter)
+void MusicXMLParserPass2::articulations(ChordRest* cr, SymId& breath, QString& chordLineType)
       {
-      Q_ASSERT(_e.isStartElement() && _e.name() == "notations");
-
-      lastGraceAFter = false;       // ensure default
-
-      Measure* measure = cr->measure();
-      int ticks = cr->duration().ticks();
-      int track = cr->track();
-      int trk = (track / VOICES) * VOICES; // first track of staff
-
-      QString wavyLineType;
-      int wavyLineNo = 0;
-      QString arpeggioType;
-      //      QString glissandoType;
-      SymId breath = SymId::noSym;
-      int tremolo = 0;
-      QString tremoloType;
-      QString placement;
-      QStringList dynamics;
-      // qreal rx = 0.0;
-      // qreal ry = 0.0;
-      // qreal yoffset = 0.0; // actually this is default-y
-      // qreal xoffset = 0.0; // not used
-      // bool hasYoffset = false;
-      QString chordLineType;
+      Q_ASSERT(_e.isStartElement() && _e.name() == "articulations");
 
       while (_e.readNextStartElement()) {
-            if (_e.name() == "slur") {
-                  int slurNo   = _e.attributes().value("number").toString().toInt();
-                  if (slurNo > 0) slurNo--;
-                  QString slurType = _e.attributes().value("type").toString();
-                  QString lineType  = _e.attributes().value("line-type").toString();
-                  if (lineType == "") lineType = "solid";
-
-                  // PriMus Music-Notation by Columbussoft (build 10093) generates overlapping
-                  // slurs that do not have a number attribute to distinguish them.
-                  // The duplicates must be ignored, to prevent memory allocation issues,
-                  // which caused a MuseScore crash
-                  // Similar issues happen with Sibelius 7.1.3 (direct export)
-
-                  if (slurType == "start") {
-                        if (_slur[slurNo].isStart())
-                              // slur start when slur already started: report error
-                              _logger->logError(QString("ignoring duplicate slur start"), &_e);
-                        else if (_slur[slurNo].isStop()) {
-                              // slur start when slur already stopped: wrap up
-                              Slur* newSlur = _slur[slurNo].slur();
-                              newSlur->setTick(tick);
-                              newSlur->setStartElement(cr);
-                              _slur[slurNo] = SlurDesc();
-                              }
-                        else {
-                              // slur start for new slur: init
-                              Slur* newSlur = new Slur(_score);
-                              if (cr->isGrace())
-                                    newSlur->setAnchor(Spanner::Anchor::CHORD);
-                              if (lineType == "dotted")
-                                    newSlur->setLineType(1);
-                              else if (lineType == "dashed")
-                                    newSlur->setLineType(2);
-                              newSlur->setTick(tick);
-                              newSlur->setStartElement(cr);
-                              QString pl = _e.attributes().value("placement").toString();
-                              if (pl == "above")
-                                    newSlur->setSlurDirection(Direction::UP);
-                              else if (pl == "below")
-                                    newSlur->setSlurDirection(Direction::DOWN);
-                              newSlur->setTrack(track);
-                              newSlur->setTrack2(track);
-                              _slur[slurNo].start(newSlur);
-                              _score->addElement(newSlur);
-                              }
-                        }
-                  else if (slurType == "stop") {
-                        if (_slur[slurNo].isStart()) {
-                              // slur stop when slur already started: wrap up
-                              Slur* newSlur = _slur[slurNo].slur();
-                              if (!(cr->isGrace())) {
-                                    newSlur->setTick2(tick);
-                                    newSlur->setTrack2(track);
-                                    }
-                              newSlur->setEndElement(cr);
-                              _slur[slurNo] = SlurDesc();
-                              }
-                        else if (_slur[slurNo].isStop())
-                              // slur stop when slur already stopped: report error
-                              _logger->logError(QString("ignoring duplicate slur stop"), &_e);
-                        else {
-                              // slur stop for new slur: init
-                              Slur* newSlur = new Slur(_score);
-                              if (!(cr->isGrace())) {
-                                    newSlur->setTick2(tick);
-                                    newSlur->setTrack2(track);
-                                    }
-                              newSlur->setEndElement(cr);
-                              _slur[slurNo].stop(newSlur);
-                              }
-                        // any grace note containing a slur stop means
-                        // last note of a grace after set has been found
-                        if (cr->isGrace())
-                              lastGraceAFter = true;
-                        }
-                  else if (slurType == "continue")
-                        ;  // ignore
+            if (addMxmlArticulationToChord(cr, _e.name().toString())) {
+                  _e.readNext();
+                  continue;
+                  }
+            else if (_e.name() == "breath-mark") {
+                  breath = SymId::breathMarkComma;
+                  _e.readElementText();
+                  // TODO: handle value read (note: encoding unknown, only "comma" found)
+                  }
+            else if (_e.name() == "caesura") {
+                  breath = SymId::caesura;
+                  _e.readNext();
+                  }
+            else if (_e.name() == "doit"
+                     || _e.name() == "falloff"
+                     || _e.name() == "plop"
+                     || _e.name() == "scoop") {
+                  chordLineType = _e.name().toString();
+                  _e.readNext();
+                  }
+            else if (_e.name() == "strong-accent") {
+                  QString strongAccentType = _e.attributes().value("type").toString();
+                  if (strongAccentType == "up" || strongAccentType == "")
+                        addArticulationToChord(cr, SymId::articMarcatoAbove, "up");
+                  else if (strongAccentType == "down")
+                        addArticulationToChord(cr, SymId::articMarcatoAbove, "down");
                   else
-                        _logger->logError(QString("unknown slur type %1").arg(slurType), &_e);
-                  _e.readNext();
-                  }
-            else if (_e.name() == "tied") {
-                  QString tiedType = _e.attributes().value("type").toString();
-                  if (tiedType == "start") {
-                        if (_tie) {
-                              _logger->logError(QString("Tie already active"), &_e);
-                              }
-                        else if (note) {
-                              _tie = new Tie(_score);
-                              note->setTieFor(_tie);
-                              _tie->setStartNote(note);
-                              _tie->setTrack(track);
-                              QString tiedOrientation = _e.attributes().value("orientation").toString();
-                              if (tiedOrientation == "over")
-                                    _tie->setSlurDirection(Direction::UP);
-                              else if (tiedOrientation == "under")
-                                    _tie->setSlurDirection(Direction::DOWN);
-                              else if (tiedOrientation == "auto")
-                                    ;  // ignore
-                              else if (tiedOrientation == "")
-                                    ;  // ignore
-                              else
-                                    _logger->logError(QString("unknown tied orientation: %1").arg(tiedOrientation), &_e);
-
-                              QString lineType  = _e.attributes().value("line-type").toString();
-                              if (lineType == "dotted")
-                                    _tie->setLineType(1);
-                              else if (lineType == "dashed")
-                                    _tie->setLineType(2);
-                              _tie = 0;
-                              }
-                        }
-                  else if (tiedType == "stop")
-                        ;  // ignore
-                  else
-                        _logger->logError(QString("unknown tied type %").arg(tiedType), &_e);
-                  _e.readNext();
-                  }
-            else if (_e.name() == "tuplet") {
-                  tuplet(tupletDesc);
-                  }
-            else if (_e.name() == "dynamics") {
-                  placement = _e.attributes().value("placement").toString();
-                  if (preferences.musicxmlImportLayout) {
-                        // ry        = ee.attribute(QString("relative-y"), "0").toDouble() * -.1;
-                        // rx        = ee.attribute(QString("relative-x"), "0").toDouble() * .1;
-                        // yoffset   = _e.attributes().value("default-y").toDouble(&hasYoffset) * -0.1;
-                        // xoffset   = ee.attribute("default-x", "0.0").toDouble() * 0.1;
-                        }
-                  while (_e.readNextStartElement()) {
-                        if (_e.name() == "other-dynamics")
-                              dynamics.push_back(_e.readElementText());
-                        else {
-                              dynamics.push_back(_e.name().toString());
-                              _e.readNext();
-                              }
-                        }
-                  }
-            else if (_e.name() == "articulations") {
-                  while (_e.readNextStartElement()) {
-                        if (addMxmlArticulationToChord(cr, _e.name().toString())) {
-                              _e.readNext();
-                              continue;
-                              }
-                        else if (_e.name() == "breath-mark") {
-                              breath = SymId::breathMarkComma;
-                              _e.readElementText();
-                              // TODO: handle value read (note: encoding unknown, only "comma" found)
-                              }
-                        else if (_e.name() == "caesura") {
-                              breath = SymId::caesura;
-                              _e.readNext();
-                              }
-                        else if (_e.name() == "doit"
-                                 || _e.name() == "falloff"
-                                 || _e.name() == "plop"
-                                 || _e.name() == "scoop") {
-                              chordLineType = _e.name().toString();
-                              _e.readNext();
-                              }
-                        else if (_e.name() == "strong-accent") {
-                              QString strongAccentType = _e.attributes().value("type").toString();
-                              if (strongAccentType == "up" || strongAccentType == "")
-                                    addArticulationToChord(cr, SymId::articMarcatoAbove, "up");
-                              else if (strongAccentType == "down")
-                                    addArticulationToChord(cr, SymId::articMarcatoAbove, "down");
-                              else
-                                    _logger->logError(QString("unknown mercato type %1").arg(strongAccentType), &_e);
-                              _e.readNext();
-                              }
-                        else
-                              skipLogCurrElem();
-                        }
-                  //qDebug("::notations tokenString '%s' name '%s'", qPrintable(_e.tokenString()), qPrintable(_e.name().toString()));
-                  }
-            else if (_e.name() == "fermata")
-                  fermata(cr);
-            else if (_e.name() == "ornaments") {
-                  bool trillMark = false;
-                  // <trill-mark placement="above"/>
-                  while (_e.readNextStartElement()) {
-                        if (addMxmlArticulationToChord(cr, _e.name().toString())) {
-                              _e.readNext();
-                              continue;
-                              }
-                        else if (_e.name() == "trill-mark") {
-                              trillMark = true;
-                              _e.readNext();
-                              }
-                        else if (_e.name() == "wavy-line") {
-                              wavyLineType = _e.attributes().value("type").toString();
-                              wavyLineNo   = _e.attributes().value("number").toString().toInt();
-                              if (wavyLineNo > 0) wavyLineNo--;
-                              // any grace note containing a wavy-line stop means
-                              // last note of a grace after set has been found
-                              if (wavyLineType == "stop" && cr->isGrace())
-                                    lastGraceAFter = true;
-                              _e.readNext();
-                              }
-                        else if (_e.name() == "tremolo") {
-                              tremoloType = _e.attributes().value("type").toString();
-                              tremolo = _e.readElementText().toInt();
-                              }
-                        else if (_e.name() == "accidental-mark")
-                              skipLogCurrElem();
-                        else if (_e.name() == "delayed-turn") {
-                              // TODO: actually this should be offset a bit to the right
-                              addArticulationToChord(cr, SymId::ornamentTurn, "");
-                              _e.readNext();
-                              }
-                        else if (_e.name() == "inverted-mordent"
-                                 || _e.name() == "mordent") {
-                              addMordentToChord(cr, _e.name().toString(),
-                                                _e.attributes().value("long").toString(),
-                                                _e.attributes().value("approach").toString(),
-                                                _e.attributes().value("departure").toString());
-                              _e.readNext();
-                              }
-                        else
-                              skipLogCurrElem();
-                        }
-                  //qDebug("::notations tokenString '%s' name '%s'", qPrintable(_e.tokenString()), qPrintable(_e.name().toString()));
-                  // note that mscore wavy line already implicitly includes a trillsym
-                  // so don't add an additional one
-                  if (trillMark && wavyLineType != "start")
-                        addArticulationToChord(cr, SymId::ornamentTrill, "");
-                  }
-            else if (_e.name() == "technical") {
-                  while (_e.readNextStartElement()) {
-                        if (addMxmlArticulationToChord(cr, _e.name().toString())) {
-                              _e.readNext();
-                              continue;
-                              }
-                        else if (_e.name() == "fingering")
-                              // TODO: distinguish between keyboards (style SubStyle::FINGERING)
-                              // and (plucked) strings (style SubStyle::LH_GUITAR_FINGERING)
-                              addTextToNote(_e.lineNumber(), _e.columnNumber(), _e.readElementText(),
-                                            SubStyle::FINGERING, _score, note);
-                        else if (_e.name() == "fret") {
-                              int fret = _e.readElementText().toInt();
-                              if (note) {
-                                    if (note->staff()->isTabStaff(0))
-                                          note->setFret(fret);
-                                    }
-                              else
-                                    _logger->logError("no note for fret", &_e);
-                              }
-                        else if (_e.name() == "pluck")
-                              addTextToNote(_e.lineNumber(), _e.columnNumber(), _e.readElementText(),
-                                            SubStyle::RH_GUITAR_FINGERING, _score, note);
-                        else if (_e.name() == "string") {
-                              QString txt = _e.readElementText();
-                              if (note) {
-                                    if (note->staff()->isTabStaff(0))
-                                          note->setString(txt.toInt() - 1);
-                                    else
-                                          addTextToNote(_e.lineNumber(), _e.columnNumber(), txt,
-                                                        SubStyle::STRING_NUMBER, _score, note);
-                                    }
-                              else
-                                    _logger->logError("no note for string", &_e);
-                              }
-                        else if (_e.name() == "pull-off")
-                              skipLogCurrElem();
-                        else
-                              skipLogCurrElem();
-                        }
-                  //qDebug("::notations tokenString '%s' name '%s'", qPrintable(_e.tokenString()), qPrintable(_e.name().toString()));
-                  }
-            else if (_e.name() == "arpeggiate") {
-                  arpeggioType = _e.attributes().value("direction").toString();
-                  if (arpeggioType == "") arpeggioType = "none";
-                  _e.readNext();
-                  }
-            else if (_e.name() == "non-arpeggiate") {
-                  arpeggioType = "non-arpeggiate";
-                  _e.readNext();
-                  }
-            else if (_e.name() == "glissando" || _e.name() == "slide") {
-                  int n                   = _e.attributes().value("number").toString().toInt();
-                  if (n > 0) n--;
-                  QString spannerType     = _e.attributes().value("type").toString();
-                  int tag                 = _e.name() == "slide" ? 0 : 1;
-                  //                  QString lineType  = ee.attribute(QString("line-type"), "solid");
-                  Glissando*& gliss = _glissandi[n][tag];
-                  if (spannerType == "start") {
-                        QColor color(_e.attributes().value("color").toString());
-                        QString glissText = _e.readElementText();
-                        if (gliss) {
-                              _logger->logError(QString("overlapping glissando/slide number %1").arg(n+1), &_e);
-                              }
-                        else if (!note) {
-                              _logger->logError(QString("no note for glissando/slide number %1 start").arg(n+1), &_e);
-                              }
-                        else {
-                              gliss = new Glissando(_score);
-                              gliss->setAnchor(Spanner::Anchor::NOTE);
-                              gliss->setStartElement(note);
-                              gliss->setTick(tick);
-                              gliss->setTrack(track);
-                              gliss->setParent(note);
-                              if (color.isValid())
-                                    gliss->setColor(color);
-                              gliss->setText(glissText);
-                              gliss->setGlissandoType(tag == 0 ? Glissando::Type::STRAIGHT : Glissando::Type::WAVY);
-                              _spanners[gliss] = QPair<int, int>(tick, -1);
-                              // qDebug("glissando/slide=%p inserted at first tick %d", gliss, tick);
-                              }
-                        }
-                  else if (spannerType == "stop") {
-                        if (!gliss) {
-                              _logger->logError(QString("glissando/slide number %1 stop without start").arg(n+1), &_e);
-                              }
-                        else if (!note) {
-                              _logger->logError(QString("no note for glissando/slide number %1 stop").arg(n+1), &_e);
-                              }
-                        else {
-                              _spanners[gliss].second = tick + ticks;
-                              gliss->setEndElement(note);
-                              gliss->setTick2(tick);
-                              gliss->setTrack2(track);
-                              // qDebug("glissando/slide=%p second tick %d", gliss, tick);
-                              gliss = 0;
-                              }
-                        }
-                  else
-                        _logger->logError(QString("unknown glissando/slide type %1").arg(spannerType), &_e);
+                        _logger->logError(QString("unknown mercato type %1").arg(strongAccentType), &_e);
                   _e.readNext();
                   }
             else
                   skipLogCurrElem();
             }
+      //qDebug("::notations tokenString '%s' name '%s'", qPrintable(_e.tokenString()), qPrintable(_e.name().toString()));
+      }
 
+//---------------------------------------------------------
+//   ornaments
+//---------------------------------------------------------
+
+/**
+ Parse the /score-partwise/part/measure/note/notations/ornaments node.
+ */
+
+void MusicXMLParserPass2::ornaments(ChordRest* cr,
+                                    QString& wavyLineType,
+                                    int& wavyLineNo,
+                                    QString& tremoloType,
+                                    int& tremoloNr, bool& lastGraceAFter)
+      {
+      Q_ASSERT(_e.isStartElement() && _e.name() == "ornaments");
+
+      bool trillMark = false;
+      // <trill-mark placement="above"/>
+      while (_e.readNextStartElement()) {
+            if (addMxmlArticulationToChord(cr, _e.name().toString())) {
+                  _e.readNext();
+                  continue;
+                  }
+            else if (_e.name() == "trill-mark") {
+                  trillMark = true;
+                  _e.readNext();
+                  }
+            else if (_e.name() == "wavy-line") {
+                  wavyLineType = _e.attributes().value("type").toString();
+                  wavyLineNo   = _e.attributes().value("number").toString().toInt();
+                  if (wavyLineNo > 0) wavyLineNo--;
+                  // any grace note containing a wavy-line stop means
+                  // last note of a grace after set has been found
+                  if (wavyLineType == "stop" && cr->isGrace())
+                        lastGraceAFter = true;
+                  _e.readNext();
+                  }
+            else if (_e.name() == "tremolo") {
+                  tremoloType = _e.attributes().value("type").toString();
+                  tremoloNr = _e.readElementText().toInt();
+                  }
+            else if (_e.name() == "accidental-mark")
+                  skipLogCurrElem();
+            else if (_e.name() == "delayed-turn") {
+                  // TODO: actually this should be offset a bit to the right
+                  addArticulationToChord(cr, SymId::ornamentTurn, "");
+                  _e.readNext();
+                  }
+            else if (_e.name() == "inverted-mordent"
+                     || _e.name() == "mordent") {
+                  addMordentToChord(cr, _e.name().toString(),
+                                    _e.attributes().value("long").toString(),
+                                    _e.attributes().value("approach").toString(),
+                                    _e.attributes().value("departure").toString());
+                  _e.readNext();
+                  }
+            else
+                  skipLogCurrElem();
+            }
+      //qDebug("::notations tokenString '%s' name '%s'", qPrintable(_e.tokenString()), qPrintable(_e.name().toString()));
+      // note that mscore wavy line already implicitly includes a trillsym
+      // so don't add an additional one
+      if (trillMark && wavyLineType != "start")
+            addArticulationToChord(cr, SymId::ornamentTrill, "");
+      }
+
+//---------------------------------------------------------
+//   technical
+//---------------------------------------------------------
+
+/**
+ Parse the /score-partwise/part/measure/note/notations/technical node.
+ */
+
+void MusicXMLParserPass2::technical(Note* note, ChordRest* cr)
+      {
+      Q_ASSERT(_e.isStartElement() && _e.name() == "technical");
+
+      while (_e.readNextStartElement()) {
+            if (addMxmlArticulationToChord(cr, _e.name().toString())) {
+                  _e.readNext();
+                  continue;
+                  }
+            else if (_e.name() == "fingering")
+                  // TODO: distinguish between keyboards (style Tid::FINGERING)
+                  // and (plucked) strings (style Tid::LH_GUITAR_FINGERING)
+                  addTextToNote(_e.lineNumber(), _e.columnNumber(), _e.readElementText(),
+                                  Tid::FINGERING, _score, note);
+            else if (_e.name() == "fret") {
+                  int fret = _e.readElementText().toInt();
+                  if (note) {
+                        if (note->staff()->isTabStaff(0))
+                              note->setFret(fret);
+                        }
+                  else
+                        _logger->logError("no note for fret", &_e);
+                  }
+            else if (_e.name() == "pluck")
+                  addTextToNote(_e.lineNumber(), _e.columnNumber(), _e.readElementText(),
+                                Tid::RH_GUITAR_FINGERING, _score, note);
+            else if (_e.name() == "string") {
+                  QString txt = _e.readElementText();
+                  if (note) {
+                        if (note->staff()->isTabStaff(0))
+                              note->setString(txt.toInt() - 1);
+                        else
+                              addTextToNote(_e.lineNumber(), _e.columnNumber(), txt,
+                                            Tid::STRING_NUMBER, _score, note);
+                        }
+                  else
+                        _logger->logError("no note for string", &_e);
+                  }
+            else if (_e.name() == "pull-off")
+                  skipLogCurrElem();
+            else
+                  skipLogCurrElem();
+            }
+      //qDebug("::notations tokenString '%s' name '%s'", qPrintable(_e.tokenString()), qPrintable(_e.name().toString()));
+      }
+
+//---------------------------------------------------------
+//   glissando
+//---------------------------------------------------------
+
+/**
+ Parse the /score-partwise/part/measure/note/notations/glissando
+ and /score-partwise/part/measure/note/notations/slide nodes.
+ */
+
+void MusicXMLParserPass2::glissando(Note* note, const int tick, const int ticks, const int track)
+      {
+      Q_ASSERT(_e.isStartElement() && (_e.name() == "glissando" || _e.name() == "slide"));
+
+      int n                   = _e.attributes().value("number").toString().toInt();
+      if (n > 0) n--;
+      QString spannerType     = _e.attributes().value("type").toString();
+      int tag                 = _e.name() == "slide" ? 0 : 1;
+      //                  QString lineType  = ee.attribute(QString("line-type"), "solid");
+      Glissando*& gliss = _glissandi[n][tag];
+      if (spannerType == "start") {
+            QColor color(_e.attributes().value("color").toString());
+            QString glissText = _e.readElementText();
+            if (gliss) {
+                  _logger->logError(QString("overlapping glissando/slide number %1").arg(n+1), &_e);
+                  }
+            else if (!note) {
+                  _logger->logError(QString("no note for glissando/slide number %1 start").arg(n+1), &_e);
+                  }
+            else {
+                  gliss = new Glissando(_score);
+                  gliss->setAnchor(Spanner::Anchor::NOTE);
+                  gliss->setStartElement(note);
+                  gliss->setTick(tick);
+                  gliss->setTrack(track);
+                  gliss->setParent(note);
+                  if (color.isValid())
+                        gliss->setColor(color);
+                  gliss->setText(glissText);
+                  gliss->setGlissandoType(tag == 0 ? GlissandoType::STRAIGHT : GlissandoType::WAVY);
+                  _spanners[gliss] = QPair<int, int>(tick, -1);
+                  // qDebug("glissando/slide=%p inserted at first tick %d", gliss, tick);
+                  }
+            }
+      else if (spannerType == "stop") {
+            if (!gliss) {
+                  _logger->logError(QString("glissando/slide number %1 stop without start").arg(n+1), &_e);
+                  }
+            else if (!note) {
+                  _logger->logError(QString("no note for glissando/slide number %1 stop").arg(n+1), &_e);
+                  }
+            else {
+                  _spanners[gliss].second = tick + ticks;
+                  gliss->setEndElement(note);
+                  gliss->setTick2(tick);
+                  gliss->setTrack2(track);
+                  // qDebug("glissando/slide=%p second tick %d", gliss, tick);
+                  gliss = 0;
+                  }
+            }
+      else
+            _logger->logError(QString("unknown glissando/slide type %1").arg(spannerType), &_e);
+      _e.readNext();
+      }
+
+//---------------------------------------------------------
+//   addArpeggio
+//---------------------------------------------------------
+
+static void addArpeggio(ChordRest* cr, const QString& arpeggioType,
+                        MxmlLogger* logger, const QXmlStreamReader* const xmlreader)
+      {
       // no support for arpeggio on rest
       if (!arpeggioType.isEmpty() && cr->type() == ElementType::CHORD) {
-            Arpeggio* a = new Arpeggio(_score);
+            Arpeggio* a = new Arpeggio(cr->score());
             if (arpeggioType == "none")
                   a->setArpeggioType(ArpeggioType::NORMAL);
             else if (arpeggioType == "up")
@@ -5933,7 +5667,7 @@ void MusicXMLParserPass2::notations(Note* note, ChordRest* cr, const int tick,
             else if (arpeggioType == "non-arpeggiate")
                   a->setArpeggioType(ArpeggioType::BRACKET);
             else {
-                  _logger->logError(QString("unknown arpeggio type %1").arg(arpeggioType), &_e);
+                  logger->logError(QString("unknown arpeggio type %1").arg(arpeggioType), xmlreader);
                   delete a;
                   a = 0;
                   }
@@ -5945,49 +5679,25 @@ void MusicXMLParserPass2::notations(Note* note, ChordRest* cr, const int tick,
             else
                   cr->add(a);
             }
+      }
 
-      if (!wavyLineType.isEmpty()) {
-            Trill*& t = _trills[wavyLineNo];
-            if (wavyLineType == "start") {
-                  if (t) {
-                        _logger->logError(QString("overlapping wavy-line number %1").arg(wavyLineNo+1), &_e);
-                        }
-                  else {
-                        t = new Trill(_score);
-                        t->setTrack(trk);
-                        _spanners[t] = QPair<int, int>(tick, -1);
-                        // qDebug("wedge trill=%p inserted at first tick %d", trill, tick);
-                        }
-                  }
-            else if (wavyLineType == "stop") {
-                  if (!t) {
-                        _logger->logError(QString("wavy-line number %1 stop without start").arg(wavyLineNo+1), &_e);
-                        }
-                  else {
-                        _spanners[t].second = tick + ticks;
-                        // qDebug("wedge trill=%p second tick %d", trill, tick);
-                        t = 0;
-                        }
-                  }
-            else
-                  _logger->logError(QString("unknown wavy-line type %1").arg(wavyLineType), &_e);
-            }
+//---------------------------------------------------------
+//   addTremolo
+//---------------------------------------------------------
 
-      if (breath != SymId::noSym && !cr->isGrace()) {
-            Breath* b = new Breath(_score);
-            // b->setTrack(trk + voice); TODO check next line
-            b->setTrack(track);
-            b->setSymId(breath);
-            Segment* seg = measure->getSegment(SegmentType::Breath, tick + ticks);
-            seg->add(b);
-            }
-
-      if (tremolo) {
-            //qDebug("tremolo %d type '%s' ticks %d tremStart %p", tremolo, qPrintable(tremoloType), ticks, _tremStart);
-            if (tremolo == 1 || tremolo == 2 || tremolo == 3 || tremolo == 4) {
+static void addTremolo(ChordRest* cr,
+                       const int tremoloNr, const QString& tremoloType, const int ticks,
+                       Chord*& tremStart,
+                       MxmlLogger* logger, const QXmlStreamReader* const xmlreader)
+      {
+      if (!cr->isChord())
+            return;
+      if (tremoloNr) {
+            //qDebug("tremolo %d type '%s' ticks %d tremStart %p", tremoloNr, qPrintable(tremoloType), ticks, _tremStart);
+            if (tremoloNr == 1 || tremoloNr == 2 || tremoloNr == 3 || tremoloNr == 4) {
                   if (tremoloType == "" || tremoloType == "single") {
-                        Tremolo* t = new Tremolo(_score);
-                        switch (tremolo) {
+                        Tremolo* t = new Tremolo(cr->score());
+                        switch (tremoloNr) {
                               case 1: t->setTremoloType(TremoloType::R8); break;
                               case 2: t->setTremoloType(TremoloType::R16); break;
                               case 3: t->setTremoloType(TremoloType::R32); break;
@@ -5996,19 +5706,19 @@ void MusicXMLParserPass2::notations(Note* note, ChordRest* cr, const int tick,
                         cr->add(t);
                         }
                   else if (tremoloType == "start") {
-                        if (_tremStart) _logger->logError("MusicXML::import: double tremolo start", &_e);
-                        _tremStart = static_cast<Chord*>(cr);
+                        if (tremStart) logger->logError("MusicXML::import: double tremolo start", xmlreader);
+                        tremStart = static_cast<Chord*>(cr);
                         }
                   else if (tremoloType == "stop") {
-                        if (_tremStart) {
-                              Tremolo* t = new Tremolo(_score);
-                              switch (tremolo) {
+                        if (tremStart) {
+                              Tremolo* t = new Tremolo(cr->score());
+                              switch (tremoloNr) {
                                     case 1: t->setTremoloType(TremoloType::C8); break;
                                     case 2: t->setTremoloType(TremoloType::C16); break;
                                     case 3: t->setTremoloType(TremoloType::C32); break;
                                     case 4: t->setTremoloType(TremoloType::C64); break;
                                     }
-                              t->setChords(_tremStart, static_cast<Chord*>(cr));
+                              t->setChords(tremStart, static_cast<Chord*>(cr));
                               // fixup chord duration and type
                               const int tremDur = ticks / 2;
                               t->chord1()->setDurationType(tremDur);
@@ -6016,19 +5726,84 @@ void MusicXMLParserPass2::notations(Note* note, ChordRest* cr, const int tick,
                               t->chord2()->setDurationType(tremDur);
                               t->chord2()->setDuration(Fraction::fromTicks(tremDur));
                               // add tremolo to first chord (only)
-                              _tremStart->add(t);
+                              tremStart->add(t);
                               }
-                        else _logger->logError("MusicXML::import: double tremolo stop w/o start", &_e);
-                        _tremStart = 0;
+                        else logger->logError("MusicXML::import: double tremolo stop w/o start", xmlreader);
+                        tremStart = 0;
                         }
                   }
             else
-                  _logger->logError(QString("unknown tremolo type %1").arg(tremolo), &_e);
+                  logger->logError(QString("unknown tremolo type %1").arg(tremoloNr), xmlreader);
             }
+      }
 
+//---------------------------------------------------------
+//   addWavyLine
+//---------------------------------------------------------
+
+static void addWavyLine(ChordRest* cr, const int tick,
+                        const int wavyLineNo, const QString& wavyLineType,
+                        MusicXmlSpannerMap& spanners, TrillStack& trills,
+                        MxmlLogger* logger, const QXmlStreamReader* const xmlreader)
+      {
+      if (!wavyLineType.isEmpty()) {
+            const auto ticks = cr->duration().ticks();
+            const auto track = cr->track();
+            const auto trk = (track / VOICES) * VOICES;       // first track of staff
+            Trill*& t = trills[wavyLineNo];
+            if (wavyLineType == "start") {
+                  if (t) {
+                        logger->logError(QString("overlapping wavy-line number %1").arg(wavyLineNo+1), xmlreader);
+                        }
+                  else {
+                        t = new Trill(cr->score());
+                        t->setTrack(trk);
+                        spanners[t] = QPair<int, int>(tick, -1);
+                        // qDebug("wedge trill=%p inserted at first tick %d", trill, tick);
+                        }
+                  }
+            else if (wavyLineType == "stop") {
+                  if (!t) {
+                        logger->logError(QString("wavy-line number %1 stop without start").arg(wavyLineNo+1), xmlreader);
+                        }
+                  else {
+                        spanners[t].second = tick + ticks;
+                        // qDebug("wedge trill=%p second tick %d", trill, tick);
+                        t = 0;
+                        }
+                  }
+            else
+                  logger->logError(QString("unknown wavy-line type %1").arg(wavyLineType), xmlreader);
+            }
+      }
+
+//---------------------------------------------------------
+//   addBreath
+//---------------------------------------------------------
+
+static void addBreath(ChordRest* cr, const int tick, SymId breath)
+      {
+      if (breath != SymId::noSym && !cr->isGrace()) {
+            Breath* b = new Breath(cr->score());
+            // b->setTrack(trk + voice); TODO check next line
+            b->setTrack(cr->track());
+            b->setSymId(breath);
+            const auto ticks = cr->duration().ticks();
+            auto seg = cr->measure()->getSegment(SegmentType::Breath, tick + ticks);
+            seg->add(b);
+            }
+      }
+
+//---------------------------------------------------------
+//   addChordLine
+//---------------------------------------------------------
+
+static void addChordLine(Note* note, const QString& chordLineType,
+                         MxmlLogger* logger, const QXmlStreamReader* const xmlreader)
+      {
       if (chordLineType != "") {
             if (note) {
-                  ChordLine* cl = new ChordLine(_score);
+                  ChordLine* cl = new ChordLine(note->score());
                   if (chordLineType == "falloff")
                         cl->setChordLineType(ChordLineType::FALL);
                   if (chordLineType == "doit")
@@ -6040,17 +5815,114 @@ void MusicXMLParserPass2::notations(Note* note, ChordRest* cr, const int tick,
                   note->chord()->add(cl);
                   }
             else
-                  _logger->logError(QString("no note for %1").arg(chordLineType), &_e);
+                  logger->logError(QString("no note for %1").arg(chordLineType), xmlreader);
             }
+      }
 
-      // more than one dynamic ???
-      // LVIFIX: check import/export of <other-dynamics>unknown_text</...>
-      // TODO remove duplicate code (see MusicXml::direction)
-      for (QStringList::Iterator it = dynamics.begin(); it != dynamics.end(); ++it ) {
-            Dynamic* dyn = new Dynamic(_score);
-            dyn->setDynamicType(*it);
+//---------------------------------------------------------
+//   notations
+//---------------------------------------------------------
+
+/**
+ Parse the /score-partwise/part/measure/note/notations node.
+ Note that some notations attach to notes only in MuseScore,
+ which means trying to attach them to a rest will crash,
+ as in that case note is a nullptr.
+ */
+
+void MusicXMLParserPass2::notations(Note* note, ChordRest* cr, const int tick,
+                                    MusicXmlTupletDesc& tupletDesc, bool& lastGraceAFter)
+      {
+      Q_ASSERT(_e.isStartElement() && _e.name() == "notations");
+
+      if (cr) {
+            lastGraceAFter = false; // ensure default
+
+            Measure* measure = cr->measure();
+            int ticks = cr->duration().ticks();
+            int track = cr->track();
+
+            QString wavyLineType;
+            int wavyLineNo = 0;
+            QString arpeggioType;
+            SymId breath = SymId::noSym;
+            int tremoloNr = 0;
+            QString tremoloType;
+            QString placement;
+            QStringList dynamicslist;
+            // qreal rx = 0.0;
+            // qreal ry = 0.0;
+            // qreal yoffset = 0.0; // actually this is default-y
+            // qreal xoffset = 0.0; // not used
+            // bool hasYoffset = false;
+            QString chordLineType;
+
+            while (_e.readNextStartElement()) {
+                  if (_e.name() == "slur") {
+                        slur(cr, tick, track, lastGraceAFter);
+                        }
+                  else if (_e.name() == "tied") {
+                        tied(note, track);
+                        }
+                  else if (_e.name() == "tuplet") {
+                        tuplet(tupletDesc);
+                        }
+                  else if (_e.name() == "dynamics") {
+                        placement = _e.attributes().value("placement").toString();
+                        if (preferences.getBool(PREF_IMPORT_MUSICXML_IMPORTLAYOUT)) {
+                              // ry        = ee.attribute(QString("relative-y"), "0").toDouble() * -.1;
+                              // rx        = ee.attribute(QString("relative-x"), "0").toDouble() * .1;
+                              // yoffset   = _e.attributes().value("default-y").toDouble(&hasYoffset) * -0.1;
+                              // xoffset   = ee.attribute("default-x", "0.0").toDouble() * 0.1;
+                              }
+                        dynamics(placement, dynamicslist);
+                        }
+                  else if (_e.name() == "articulations") {
+                        articulations(cr, breath, chordLineType);
+                        }
+                  else if (_e.name() == "fermata")
+                        fermata(cr);
+                  else if (_e.name() == "ornaments") {
+                        ornaments(cr, wavyLineType, wavyLineNo, tremoloType, tremoloNr, lastGraceAFter);
+                        }
+                  else if (_e.name() == "technical") {
+                        technical(note, cr);
+                        }
+                  else if (_e.name() == "arpeggiate") {
+                        arpeggioType = _e.attributes().value("direction").toString();
+                        if (arpeggioType == "") arpeggioType = "none";
+                        _e.readNext();
+                        }
+                  else if (_e.name() == "non-arpeggiate") {
+                        arpeggioType = "non-arpeggiate";
+                        _e.readNext();
+                        }
+                  else if (_e.name() == "glissando" || _e.name() == "slide") {
+                        glissando(note, tick, ticks, track);
+                        }
+                  else
+                        skipLogCurrElem();
+                  }
+
+            addArpeggio(cr, arpeggioType, _logger, &_e);
+            addWavyLine(cr, tick, wavyLineNo, wavyLineType, _spanners, _trills, _logger, &_e);
+            addBreath(cr, tick, breath);
+            addTremolo(cr, tremoloNr, tremoloType, ticks, _tremStart, _logger, &_e);
+            addChordLine(note, chordLineType, _logger, &_e);
+
+            // more than one dynamic ???
+            // LVIFIX: check import/export of <other-dynamics>unknown_text</...>
+            // TODO remove duplicate code (see MusicXml::direction)
+            for (QStringList::Iterator it = dynamicslist.begin(); it != dynamicslist.end(); ++it ) {
+                  Dynamic* dyn = new Dynamic(_score);
+                  dyn->setDynamicType(*it);
 //TODO:ws            if (hasYoffset) dyn->textStyle().setYoff(yoffset);
-            addElemOffset(dyn, track, placement, measure, tick);
+                  addElemOffset(dyn, track, placement, measure, tick);
+                  }
+            }
+      else {
+            _logger->logDebugInfo("no note to attach to, skipping notations", &_e);
+            _e.skipCurrentElement();
             }
 
       Q_ASSERT(_e.isEndElement() && _e.name() == "notations");
@@ -6142,17 +6014,17 @@ void MusicXMLParserPass2::tuplet(MusicXmlTupletDesc& tupletDesc)
 
       // set bracket, leave at default if unspecified
       if (tupletBracket == "yes")
-            tupletDesc.bracket = Tuplet::BracketType::SHOW_BRACKET;
+            tupletDesc.bracket = TupletBracketType::SHOW_BRACKET;
       else if (tupletBracket == "no")
-            tupletDesc.bracket = Tuplet::BracketType::SHOW_NO_BRACKET;
+            tupletDesc.bracket = TupletBracketType::SHOW_NO_BRACKET;
 
       // set number, default is "actual" (=NumberType::SHOW_NUMBER)
       if (tupletShowNumber == "both")
-            tupletDesc.shownumber = Tuplet::NumberType::SHOW_RELATION;
+            tupletDesc.shownumber = TupletNumberType::SHOW_RELATION;
       else if (tupletShowNumber == "none")
-            tupletDesc.shownumber = Tuplet::NumberType::NO_TEXT;
+            tupletDesc.shownumber = TupletNumberType::NO_TEXT;
       else
-            tupletDesc.shownumber = Tuplet::NumberType::SHOW_NUMBER;
+            tupletDesc.shownumber = TupletNumberType::SHOW_NUMBER;
       }
 
 //---------------------------------------------------------

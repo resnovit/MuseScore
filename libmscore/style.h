@@ -17,18 +17,19 @@
 
 namespace Ms {
 
-enum class P_ID : int;
+enum class Pid : int;
 class XmlWriter;
 struct ChordDescription;
 class Element;
+class Score;
 
 //---------------------------------------------------------
-//   StyleIdx
+//   Sid
 //
 //    Keep in sync with styleTypes[] in style.cpp
 //---------------------------------------------------------
 
-enum class StyleIdx {
+enum class Sid {
       NOSTYLE = -1,
 
       pageWidth,
@@ -62,6 +63,33 @@ enum class StyleIdx {
       lyricsDashForce,
       lyricsAlignVerseNumber,
       lyricsLineThickness,
+      lyricsMelismaAlign,
+      lyricsMelismaPad,
+      lyricsDashPad,
+      lyricsDashLineThickness,
+      lyricsDashYposRatio,
+
+      lyricsOddFontFace,
+      lyricsOddFontSize,
+      lyricsOddFontStyle,
+      lyricsOddAlign,
+      lyricsOddFrameType,
+      lyricsOddFramePadding,
+      lyricsOddFrameWidth,
+      lyricsOddFrameRound,
+      lyricsOddFrameFgColor,
+      lyricsOddFrameBgColor,
+
+      lyricsEvenFontFace,
+      lyricsEvenFontSize,
+      lyricsEvenFontStyle,
+      lyricsEvenAlign,
+      lyricsEvenFrameType,
+      lyricsEvenFramePadding,
+      lyricsEvenFrameWidth,
+      lyricsEvenFrameRound,
+      lyricsEvenFrameFgColor,
+      lyricsEvenFrameBgColor,
 
       figuredBassFontFamily,
 //      figuredBassFontSize,
@@ -143,6 +171,7 @@ enum class StyleIdx {
       propertyDistanceStem,
       propertyDistance,
       articulationMag,
+      articulationPosAbove,
       lastSystemFillLimit,
 
       hairpinPlacement,
@@ -151,6 +180,16 @@ enum class StyleIdx {
       hairpinHeight,
       hairpinContHeight,
       hairpinLineWidth,
+      hairpinFontFace,
+      hairpinFontSize,
+      hairpinFontStyle,
+      hairpinTextAlign,
+      hairpinFrameType,
+      hairpinFramePadding,
+      hairpinFrameWidth,
+      hairpinFrameRound,
+      hairpinFrameFgColor,
+      hairpinFrameBgColor,
 
       pedalPlacement,
       pedalPosAbove,
@@ -159,6 +198,16 @@ enum class StyleIdx {
       pedalLineStyle,
       pedalBeginTextOffset,
       pedalHookHeight,
+      pedalFontFace,
+      pedalFontSize,
+      pedalFontStyle,
+      pedalTextAlign,
+      pedalFrameType,
+      pedalFramePadding,
+      pedalFrameWidth,
+      pedalFrameRound,
+      pedalFrameFgColor,
+      pedalFrameBgColor,
 
       trillPlacement,
       trillPosAbove,
@@ -168,15 +217,50 @@ enum class StyleIdx {
       vibratoPosAbove,
       vibratoPosBelow,
 
-      harmonyY,
       harmonyFretDist,
       minHarmonyDistance,
       maxHarmonyBarDistance,
+      harmonyPlacement,
+
+      chordSymbolAPosAbove,
+      chordSymbolAPosBelow,
+
+      chordSymbolBPosAbove,
+      chordSymbolBPosBelow,
+
+      chordSymbolAFontFace,
+      chordSymbolAFontSize,
+      chordSymbolAFontStyle,
+      chordSymbolAAlign,
+      chordSymbolAFrameType,
+      chordSymbolAFramePadding,
+      chordSymbolAFrameWidth,
+      chordSymbolAFrameRound,
+      chordSymbolAFrameFgColor,
+      chordSymbolAFrameBgColor,
+
+      chordSymbolBFontFace,
+      chordSymbolBFontSize,
+      chordSymbolBFontStyle,
+      chordSymbolBAlign,
+      chordSymbolBFrameType,
+      chordSymbolBFramePadding,
+      chordSymbolBFrameWidth,
+      chordSymbolBFrameRound,
+      chordSymbolBFrameFgColor,
+      chordSymbolBFrameBgColor,
+
       capoPosition,
       fretNumMag,
       fretNumPos,
       fretY,
       fretMinDistance,
+      fretMag,
+      fretPlacement,
+      fretStrings,
+      fretFrets,
+      fretOffset,
+      fretBarre,
 
       showPageNumber,
       showPageNumberOne,
@@ -259,18 +343,60 @@ enum class StyleIdx {
       oddFooterC,
       oddFooterR,
 
-      voltaY,
+      voltaPosAbove,
       voltaHook,
       voltaLineWidth,
       voltaLineStyle,
+      voltaFontFace,
+      voltaFontSize,
+      voltaFontStyle,
+      voltaAlign,
+      voltaOffset,
+      voltaFrameType,
+      voltaFramePadding,
+      voltaFrameWidth,
+      voltaFrameRound,
+      voltaFrameFgColor,
+      voltaFrameBgColor,
 
-      ottavaPlacement,
+      ottava8VAPlacement,
+      ottava8VBPlacement,
+      ottava15MAPlacement,
+      ottava15MBPlacement,
+      ottava22MAPlacement,
+      ottava22MBPlacement,
+
+      ottava8VAText,
+      ottava8VBText,
+      ottava15MAText,
+      ottava15MBText,
+      ottava22MAText,
+      ottava22MBText,
+
+      ottava8VAnoText,
+      ottava8VBnoText,
+      ottava15MAnoText,
+      ottava15MBnoText,
+      ottava22MAnoText,
+      ottava22MBnoText,
+
       ottavaPosAbove,
       ottavaPosBelow,
-      ottavaHook,
+      ottavaHookAbove,
+      ottavaHookBelow,
       ottavaLineWidth,
       ottavaLineStyle,
       ottavaNumbersOnly,
+      ottavaFontFace,
+      ottavaFontSize,
+      ottavaFontStyle,
+      ottavaTextAlign,
+      ottavaFrameType,
+      ottavaFramePadding,
+      ottavaFrameWidth,
+      ottavaFrameRound,
+      ottavaFrameFgColor,
+      ottavaFrameBgColor,
 
       tabClef,
 
@@ -297,9 +423,20 @@ enum class StyleIdx {
       tupletDirection,
       tupletNumberType,
       tupletBracketType,
+      tupletFontFace,
+      tupletFontSize,
+      tupletFontStyle,
+      tupletAlign,
+      tupletBracketHookHeight,
+      tupletOffset,
+      tupletFrameType,
+      tupletFramePadding,
+      tupletFrameWidth,
+      tupletFrameRound,
+      tupletFrameFgColor,
+      tupletFrameBgColor,
 
       barreLineWidth,
-      fretMag,
       scaleBarlines,
       barGraceDistance,
 
@@ -319,6 +456,12 @@ enum class StyleIdx {
       textLinePlacement,
       textLinePosAbove,
       textLinePosBelow,
+      textLineFrameType,
+      textLineFramePadding,
+      textLineFrameWidth,
+      textLineFrameRound,
+      textLineFrameFgColor,
+      textLineFrameBgColor,
 
       tremoloBarLineWidth,
       jumpPosAbove,
@@ -327,13 +470,9 @@ enum class StyleIdx {
       defaultFontFace,
       defaultFontSize,
       defaultFontSpatiumDependent,
-      defaultFontBold,
-      defaultFontItalic,
-      defaultFontUnderline,
+      defaultFontStyle,
       defaultAlign,
-      defaultFrame,
-      defaultFrameSquare,
-      defaultFrameCircle,
+      defaultFrameType,
       defaultFramePadding,
       defaultFrameWidth,
       defaultFrameRound,
@@ -342,72 +481,69 @@ enum class StyleIdx {
       defaultOffset,
       defaultOffsetType,
       defaultSystemFlag,
+      defaultText,
 
       titleFontFace,
       titleFontSize,
       titleFontSpatiumDependent,
-      titleFontBold,
-      titleFontItalic,
-      titleFontUnderline,
+      titleFontStyle,
       titleAlign,
       titleOffset,
       titleOffsetType,
+      titleFrameType,
+      titleFramePadding,
+      titleFrameWidth,
+      titleFrameRound,
+      titleFrameFgColor,
+      titleFrameBgColor,
 
       subTitleFontFace,
       subTitleFontSize,
       subTitleFontSpatiumDependent,
-      subTitleFontBold,
-      subTitleFontItalic,
-      subTitleFontUnderline,
+      subTitleFontStyle,
       subTitleAlign,
       subTitleOffset,
       subTitleOffsetType,
+      subTitleFrameType,
+      subTitleFramePadding,
+      subTitleFrameWidth,
+      subTitleFrameRound,
+      subTitleFrameFgColor,
+      subTitleFrameBgColor,
 
       composerFontFace,
       composerFontSize,
       composerFontSpatiumDependent,
-      composerFontBold,
-      composerFontItalic,
-      composerFontUnderline,
+      composerFontStyle,
       composerAlign,
       composerOffset,
       composerOffsetType,
+      composerFrameType,
+      composerFramePadding,
+      composerFrameWidth,
+      composerFrameRound,
+      composerFrameFgColor,
+      composerFrameBgColor,
 
       lyricistFontFace,
       lyricistFontSize,
       lyricistFontSpatiumDependent,
-      lyricistFontBold,
-      lyricistFontItalic,
-      lyricistFontUnderline,
+      lyricistFontStyle,
       lyricistAlign,
       lyricistOffset,
       lyricistOffsetType,
-
-      lyricsOddFontFace,
-      lyricsOddFontSize,
-      lyricsOddFontBold,
-      lyricsOddFontItalic,
-      lyricsOddFontUnderline,
-      lyricsOddAlign,
-      lyricsOddOffset,
-
-      lyricsEvenFontFace,
-      lyricsEvenFontSize,
-      lyricsEvenFontBold,
-      lyricsEvenFontItalic,
-      lyricsEvenFontUnderline,
-      lyricsEvenAlign,
-      lyricsEvenOffset,
+      lyricistFrameType,
+      lyricistFramePadding,
+      lyricistFrameWidth,
+      lyricistFrameRound,
+      lyricistFrameFgColor,
+      lyricistFrameBgColor,
 
       fingeringFontFace,
       fingeringFontSize,
-      fingeringFontBold,
-      fingeringFontItalic,
-      fingeringFontUnderline,
+      fingeringFontStyle,
       fingeringAlign,
-      fingeringFrame,
-      fingeringFrameSquare,
-      fingeringFrameCircle,
+      fingeringFrameType,
       fingeringFramePadding,
       fingeringFrameWidth,
       fingeringFrameRound,
@@ -417,13 +553,9 @@ enum class StyleIdx {
 
       lhGuitarFingeringFontFace,
       lhGuitarFingeringFontSize,
-      lhGuitarFingeringFontBold,
-      lhGuitarFingeringFontItalic,
-      lhGuitarFingeringFontUnderline,
+      lhGuitarFingeringFontStyle,
       lhGuitarFingeringAlign,
-      lhGuitarFingeringFrame,
-      lhGuitarFingeringFrameSquare,
-      lhGuitarFingeringFrameCircle,
+      lhGuitarFingeringFrameType,
       lhGuitarFingeringFramePadding,
       lhGuitarFingeringFrameWidth,
       lhGuitarFingeringFrameRound,
@@ -433,13 +565,9 @@ enum class StyleIdx {
 
       rhGuitarFingeringFontFace,
       rhGuitarFingeringFontSize,
-      rhGuitarFingeringFontBold,
-      rhGuitarFingeringFontItalic,
-      rhGuitarFingeringFontUnderline,
+      rhGuitarFingeringFontStyle,
       rhGuitarFingeringAlign,
-      rhGuitarFingeringFrame,
-      rhGuitarFingeringFrameSquare,
-      rhGuitarFingeringFrameCircle,
+      rhGuitarFingeringFrameType,
       rhGuitarFingeringFramePadding,
       rhGuitarFingeringFrameWidth,
       rhGuitarFingeringFrameRound,
@@ -449,13 +577,9 @@ enum class StyleIdx {
 
       stringNumberFontFace,
       stringNumberFontSize,
-      stringNumberFontBold,
-      stringNumberFontItalic,
-      stringNumberFontUnderline,
+      stringNumberFontStyle,
       stringNumberAlign,
-      stringNumberFrame,
-      stringNumberFrameSquare,
-      stringNumberFrameCircle,
+      stringNumberFrameType,
       stringNumberFramePadding,
       stringNumberFrameWidth,
       stringNumberFrameRound,
@@ -465,111 +589,155 @@ enum class StyleIdx {
 
       longInstrumentFontFace,
       longInstrumentFontSize,
-      longInstrumentFontBold,
-      longInstrumentFontItalic,
-      longInstrumentFontUnderline,
+      longInstrumentFontStyle,
       longInstrumentAlign,
+      longInstrumentOffset,
+      longInstrumentFrameType,
+      longInstrumentFramePadding,
+      longInstrumentFrameWidth,
+      longInstrumentFrameRound,
+      longInstrumentFrameFgColor,
+      longInstrumentFrameBgColor,
 
       shortInstrumentFontFace,
       shortInstrumentFontSize,
-      shortInstrumentFontBold,
-      shortInstrumentFontItalic,
-      shortInstrumentFontUnderline,
+      shortInstrumentFontStyle,
       shortInstrumentAlign,
+      shortInstrumentOffset,
+      shortInstrumentFrameType,
+      shortInstrumentFramePadding,
+      shortInstrumentFrameWidth,
+      shortInstrumentFrameRound,
+      shortInstrumentFrameFgColor,
+      shortInstrumentFrameBgColor,
 
       partInstrumentFontFace,
       partInstrumentFontSize,
-      partInstrumentFontBold,
-      partInstrumentFontItalic,
-      partInstrumentFontUnderline,
+      partInstrumentFontStyle,
+      partInstrumentAlign,
+      partInstrumentOffset,
+      partInstrumentFrameType,
+      partInstrumentFramePadding,
+      partInstrumentFrameWidth,
+      partInstrumentFrameRound,
+      partInstrumentFrameFgColor,
+      partInstrumentFrameBgColor,
 
       dynamicsFontFace,
       dynamicsFontSize,
-      dynamicsFontBold,
-      dynamicsFontItalic,
-      dynamicsFontUnderline,
+      dynamicsFontStyle,
       dynamicsAlign,
+      dynamicsFrameType,
+      dynamicsFramePadding,
+      dynamicsFrameWidth,
+      dynamicsFrameRound,
+      dynamicsFrameFgColor,
+      dynamicsFrameBgColor,
 
       expressionFontFace,
       expressionFontSize,
-      expressionFontBold,
-      expressionFontItalic,
-      expressionFontUnderline,
+      expressionFontStyle,
       expressionAlign,
+      expressionPlacement,
+      expressionOffset,
+      expressionFrameType,
+      expressionFramePadding,
+      expressionFrameWidth,
+      expressionFrameRound,
+      expressionFrameFgColor,
+      expressionFrameBgColor,
 
       tempoFontFace,
       tempoFontSize,
-      tempoFontBold,
-      tempoFontItalic,
-      tempoFontUnderline,
+      tempoFontStyle,
       tempoAlign,
-      tempoOffset,
       tempoSystemFlag,
       tempoPlacement,
       tempoPosAbove,
       tempoPosBelow,
       tempoMinDistance,
+      tempoFrameType,
+      tempoFramePadding,
+      tempoFrameWidth,
+      tempoFrameRound,
+      tempoFrameFgColor,
+      tempoFrameBgColor,
 
       metronomeFontFace,
       metronomeFontSize,
-      metronomeFontBold,
-      metronomeFontItalic,
-      metronomeFontUnderline,
+      metronomeFontStyle,
+      metronomePlacement,
+      metronomeAlign,
+      metronomeOffset,
+      metronomeFrameType,
+      metronomeFramePadding,
+      metronomeFrameWidth,
+      metronomeFrameRound,
+      metronomeFrameFgColor,
+      metronomeFrameBgColor,
 
       measureNumberFontFace,
       measureNumberFontSize,
-      measureNumberFontBold,
-      measureNumberFontItalic,
-      measureNumberFontUnderline,
+      measureNumberFontStyle,
       measureNumberOffset,
       measureNumberOffsetType,
+      measureNumberAlign,
+      measureNumberFrameType,
+      measureNumberFramePadding,
+      measureNumberFrameWidth,
+      measureNumberFrameRound,
+      measureNumberFrameFgColor,
+      measureNumberFrameBgColor,
 
       translatorFontFace,
       translatorFontSize,
-      translatorFontBold,
-      translatorFontItalic,
-      translatorFontUnderline,
+      translatorFontStyle,
+      translatorAlign,
+      translatorOffset,
+      translatorFrameType,
+      translatorFramePadding,
+      translatorFrameWidth,
+      translatorFrameRound,
+      translatorFrameFgColor,
+      translatorFrameBgColor,
 
-      tupletFontFace,
-      tupletFontSize,
-      tupletFontBold,
-      tupletFontItalic,
-      tupletFontUnderline,
-      tupletAlign,
+      systemTextFontFace,
+      systemTextFontSize,
+      systemTextFontStyle,
+      systemTextAlign,
+      systemTextOffsetType,
+      systemTextPlacement,
+      systemTextPosAbove,
+      systemTextPosBelow,
+      systemTextMinDistance,
+      systemTextFrameType,
+      systemTextFramePadding,
+      systemTextFrameWidth,
+      systemTextFrameRound,
+      systemTextFrameFgColor,
+      systemTextFrameBgColor,
 
-      systemFontFace,
-      systemFontSize,
-      systemFontBold,
-      systemFontItalic,
-      systemFontUnderline,
-      systemOffset,
-      systemOffsetType,
-      systemAlign,
-
-      staffFontFace,
-      staffFontSize,
-      staffFontBold,
-      staffFontItalic,
-      staffFontUnderline,
-      staffOffset,
-      staffOffsetType,
-
-      chordSymbolFontFace,
-      chordSymbolFontSize,
-      chordSymbolFontBold,
-      chordSymbolFontItalic,
-      chordSymbolFontUnderline,
-      chordSymbolAlign,
+      staffTextFontFace,
+      staffTextFontSize,
+      staffTextFontStyle,
+      staffTextAlign,
+      staffTextOffsetType,
+      staffTextPlacement,
+      staffTextPosAbove,
+      staffTextPosBelow,
+      staffTextMinDistance,
+      staffTextFrameType,
+      staffTextFramePadding,
+      staffTextFrameWidth,
+      staffTextFrameRound,
+      staffTextFrameFgColor,
+      staffTextFrameBgColor,
 
       rehearsalMarkFontFace,
       rehearsalMarkFontSize,
-      rehearsalMarkFontBold,
-      rehearsalMarkFontItalic,
-      rehearsalMarkFontUnderline,
+      rehearsalMarkFontStyle,
       rehearsalMarkAlign,
-      rehearsalMarkFrame,
-      rehearsalMarkFrameSquare,
-      rehearsalMarkFrameCircle,
+      rehearsalMarkFrameType,
       rehearsalMarkFramePadding,
       rehearsalMarkFrameWidth,
       rehearsalMarkFrameRound,
@@ -582,114 +750,198 @@ enum class StyleIdx {
 
       repeatLeftFontFace,
       repeatLeftFontSize,
-      repeatLeftFontBold,
-      repeatLeftFontItalic,
-      repeatLeftFontUnderline,
+      repeatLeftFontStyle,
       repeatLeftAlign,
+      repeatLeftPlacement,
+      repeatLeftFrameType,
+      repeatLeftFramePadding,
+      repeatLeftFrameWidth,
+      repeatLeftFrameRound,
+      repeatLeftFrameFgColor,
+      repeatLeftFrameBgColor,
 
       repeatRightFontFace,
       repeatRightFontSize,
-      repeatRightFontBold,
-      repeatRightFontItalic,
-      repeatRightFontUnderline,
+      repeatRightFontStyle,
       repeatRightAlign,
-
-      voltaFontFace,
-      voltaFontSize,
-      voltaFontBold,
-      voltaFontItalic,
-      voltaFontUnderline,
-      voltaAlign,
-      voltaOffset,
+      repeatRightPlacement,
+      repeatRightFrameType,
+      repeatRightFramePadding,
+      repeatRightFrameWidth,
+      repeatRightFrameRound,
+      repeatRightFrameFgColor,
+      repeatRightFrameBgColor,
 
       frameFontFace,
       frameFontSize,
-      frameFontBold,
-      frameFontItalic,
-      frameFontUnderline,
+      frameFontStyle,
       frameAlign,
+      frameOffset,
+      frameFrameType,
+      frameFramePadding,
+      frameFrameWidth,
+      frameFrameRound,
+      frameFrameFgColor,
+      frameFrameBgColor,
 
       textLineFontFace,
       textLineFontSize,
-      textLineFontBold,
-      textLineFontItalic,
-      textLineFontUnderline,
+      textLineFontStyle,
+      textLineTextAlign,
 
       glissandoFontFace,
       glissandoFontSize,
-      glissandoFontBold,
-      glissandoFontItalic,
-      glissandoFontUnderline,
-
-      ottavaFontFace,
-      ottavaFontSize,
-      ottavaFontBold,
-      ottavaFontItalic,
-      ottavaFontUnderline,
-      ottavaTextAlign,
-
-      pedalFontFace,
-      pedalFontSize,
-      pedalFontBold,
-      pedalFontItalic,
-      pedalFontUnderline,
-      pedalTextAlign,
-
-      hairpinFontFace,
-      hairpinFontSize,
-      hairpinFontBold,
-      hairpinFontItalic,
-      hairpinFontUnderline,
-      hairpinTextAlign,
+      glissandoFontStyle,
+      glissandoAlign,
+      glissandoOffset,
+      glissandoFrameType,
+      glissandoFramePadding,
+      glissandoFrameWidth,
+      glissandoFrameRound,
+      glissandoFrameFgColor,
+      glissandoFrameBgColor,
+      glissandoLineWidth,
+      glissandoText,
 
       bendFontFace,
       bendFontSize,
-      bendFontBold,
-      bendFontItalic,
-      bendFontUnderline,
+      bendFontStyle,
+      bendAlign,
+      bendOffset,
+      bendFrameType,
+      bendFramePadding,
+      bendFrameWidth,
+      bendFrameRound,
+      bendFrameFgColor,
+      bendFrameBgColor,
+      bendLineWidth,
+      bendArrowWidth,
 
       headerFontFace,
       headerFontSize,
-      headerFontBold,
-      headerFontItalic,
-      headerFontUnderline,
+      headerFontStyle,
+      headerAlign,
+      headerOffset,
+      headerFrameType,
+      headerFramePadding,
+      headerFrameWidth,
+      headerFrameRound,
+      headerFrameFgColor,
+      headerFrameBgColor,
 
       footerFontFace,
       footerFontSize,
-      footerFontBold,
-      footerFontItalic,
-      footerFontUnderline,
+      footerFontStyle,
+      footerAlign,
+      footerOffset,
+      footerFrameType,
+      footerFramePadding,
+      footerFrameWidth,
+      footerFrameRound,
+      footerFrameFgColor,
+      footerFrameBgColor,
 
       instrumentChangeFontFace,
       instrumentChangeFontSize,
-      instrumentChangeFontBold,
-      instrumentChangeFontItalic,
-      instrumentChangeFontUnderline,
+      instrumentChangeFontStyle,
+      instrumentChangeAlign,
       instrumentChangeOffset,
+      instrumentChangePlacement,
+      instrumentChangePosAbove,
+      instrumentChangePosBelow,
+      instrumentChangeMinDistance,
+      instrumentChangeFrameType,
+      instrumentChangeFramePadding,
+      instrumentChangeFrameWidth,
+      instrumentChangeFrameRound,
+      instrumentChangeFrameFgColor,
+      instrumentChangeFrameBgColor,
 
       figuredBassFontFace,
       figuredBassFontSize,
-      figuredBassFontBold,
-      figuredBassFontItalic,
-      figuredBassFontUnderline,
+      figuredBassFontStyle,
 
       user1FontFace,
       user1FontSize,
-      user1FontBold,
-      user1FontItalic,
-      user1FontUnderline,
+      user1FontStyle,
+      user1Align,
+      user1Offset,
+      user1OffsetType,
+      user1FrameType,
+      user1FramePadding,
+      user1FrameWidth,
+      user1FrameRound,
+      user1FrameFgColor,
+      user1FrameBgColor,
 
       user2FontFace,
       user2FontSize,
-      user2FontBold,
-      user2FontItalic,
-      user2FontUnderline,
+      user2FontStyle,
+      user2Align,
+      user2Offset,
+      user2OffsetType,
+      user2FrameType,
+      user2FramePadding,
+      user2FrameWidth,
+      user2FrameRound,
+      user2FrameFgColor,
+      user2FrameBgColor,
+
+      user3FontFace,
+      user3FontSize,
+      user3FontStyle,
+      user3Align,
+      user3Offset,
+      user3OffsetType,
+      user3FrameType,
+      user3FramePadding,
+      user3FrameWidth,
+      user3FrameRound,
+      user3FrameFgColor,
+      user3FrameBgColor,
+
+      user4FontFace,
+      user4FontSize,
+      user4FontStyle,
+      user4Align,
+      user4Offset,
+      user4OffsetType,
+      user4FrameType,
+      user4FramePadding,
+      user4FrameWidth,
+      user4FrameRound,
+      user4FrameFgColor,
+      user4FrameBgColor,
+
+      user5FontFace,
+      user5FontSize,
+      user5FontStyle,
+      user5Align,
+      user5Offset,
+      user5OffsetType,
+      user5FrameType,
+      user5FramePadding,
+      user5FrameWidth,
+      user5FrameRound,
+      user5FrameFgColor,
+      user5FrameBgColor,
+
+      user6FontFace,
+      user6FontSize,
+      user6FontStyle,
+      user6Align,
+      user6Offset,
+      user6OffsetType,
+      user6FrameType,
+      user6FramePadding,
+      user6FrameWidth,
+      user6FrameRound,
+      user6FrameFgColor,
+      user6FrameBgColor,
 
       letRingFontFace,
       letRingFontSize,
-      letRingFontBold,
-      letRingFontItalic,
-      letRingFontUnderline,
+      letRingFontStyle,
       letRingTextAlign,
       letRingHookHeight,
       letRingPlacement,
@@ -699,12 +951,16 @@ enum class StyleIdx {
       letRingLineStyle,
       letRingBeginTextOffset,
       letRingText,
+      letRingFrameType,
+      letRingFramePadding,
+      letRingFrameWidth,
+      letRingFrameRound,
+      letRingFrameFgColor,
+      letRingFrameBgColor,
 
       palmMuteFontFace,
       palmMuteFontSize,
-      palmMuteFontBold,
-      palmMuteFontItalic,
-      palmMuteFontUnderline,
+      palmMuteFontStyle,
       palmMuteTextAlign,
       palmMuteHookHeight,
       palmMutePlacement,
@@ -714,36 +970,34 @@ enum class StyleIdx {
       palmMuteLineStyle,
       palmMuteBeginTextOffset,
       palmMuteText,
+      palmMuteFrameType,
+      palmMuteFramePadding,
+      palmMuteFrameWidth,
+      palmMuteFrameRound,
+      palmMuteFrameFgColor,
+      palmMuteFrameBgColor,
+
+      fermataPosAbove,
+      fermataPosBelow,
+      fermataMinDistance,
 
       STYLES
       };
 
-//---------------------------------------------------------
-//   StyledProperty
-//---------------------------------------------------------
-
-struct StyledProperty {
-      StyleIdx styleIdx;
-      P_ID propertyIdx;
-      };
-
-extern const std::vector<StyledProperty> fingeringStyle;
-extern const std::vector<StyledProperty> titleStyle;
-
 //-------------------------------------------------------------------
-//   SubStyle
-//    Enumerate the list of built-in substyles
-//    must be in sync with namedStyles array
+//   Tid
+//    Enumerate the list of built-in text substyles
+//    must be in sync with textStyles array
 //-------------------------------------------------------------------
 
-enum class SubStyle {
+enum class Tid {
       DEFAULT,
       TITLE,
       SUBTITLE,
       COMPOSER,
       POET,
-      LYRIC1,
-      LYRIC2,
+      LYRICS_ODD,
+      LYRICS_EVEN,
       FINGERING,
       LH_GUITAR_FINGERING,
       RH_GUITAR_FINGERING,
@@ -760,7 +1014,8 @@ enum class SubStyle {
       TUPLET,
       SYSTEM,
       STAFF,
-      HARMONY,
+      HARMONY_A,
+      HARMONY_B,
       REHEARSAL_MARK,
       REPEAT_LEFT,       // align to start of measure
       REPEAT_RIGHT,      // align to end of measure
@@ -768,6 +1023,7 @@ enum class SubStyle {
       TEXTLINE,
       GLISSANDO,
       OTTAVA,
+      VOLTA,
       PEDAL,
       LET_RING,
       PALM_MUTE,
@@ -776,19 +1032,24 @@ enum class SubStyle {
       HEADER,
       FOOTER,
       INSTRUMENT_CHANGE,
-      FIGURED_BASS,
       USER1,
       USER2,
-      SUBSTYLES
+      USER3,
+      USER4,
+      USER5,
+      USER6,
+      TEXT_STYLES
       };
 
 //---------------------------------------------------------
 //   MStyle
+//    the name "Style" gives problems with some microsoft
+//    header files...
 //---------------------------------------------------------
 
 class MStyle {
-      std::array<QVariant, int(StyleIdx::STYLES)> _values;
-      std::array<qreal, int(StyleIdx::STYLES)> _precomputedValues;
+      std::array<QVariant, int(Sid::STYLES)> _values;
+      std::array<qreal, int(Sid::STYLES)> _precomputedValues;
 
       ChordList _chordList;
       bool _customChordList;        // if true, chordlist will be saved as part of score
@@ -797,11 +1058,11 @@ class MStyle {
       MStyle();
 
       void precomputeValues();
-      QVariant value(StyleIdx idx) const;
-      qreal pvalue(StyleIdx idx) const    { return _precomputedValues[int(idx)]; }
-      void set(StyleIdx idx, const QVariant& v);
+      QVariant value(Sid idx) const;
+      qreal pvalue(Sid idx) const    { return _precomputedValues[int(idx)]; }
+      void set(Sid idx, const QVariant& v);
 
-      bool isDefault(StyleIdx idx) const;
+      bool isDefault(Sid idx) const;
 
       const ChordDescription* chordDescription(int id) const;
       ChordList* chordList()  { return &_chordList; }
@@ -812,17 +1073,41 @@ class MStyle {
       void load(XmlReader& e);
       void save(XmlWriter& xml, bool optimize);
       bool readProperties(XmlReader&);
+      bool readStyleValCompat(XmlReader&);
+      bool readTextStyleValCompat(XmlReader&);
 
-      static const char* valueType(const StyleIdx);
-      static const char* valueName(const StyleIdx);
-      static StyleIdx styleIdx(const QString& name);
+      void reset(Score*);
+
+      static const char* valueType(const Sid);
+      static const char* valueName(const Sid);
+      static Sid styleIdx(const QString& name);
       };
 
-const std::vector<StyledProperty>& subStyle(const char*);
-const std::vector<StyledProperty>& subStyle(SubStyle);
-const char* subStyleName(SubStyle);
-QString subStyleUserName(SubStyle);
-SubStyle subStyleFromName(const QString&);
+//---------------------------------------------------------
+//   StyledProperty
+//---------------------------------------------------------
+
+struct StyledProperty {
+      Sid sid;
+      Pid pid;
+      };
+
+typedef std::vector<StyledProperty> ElementStyle;
+
+#define TEXT_STYLE_SIZE 12
+
+typedef std::array<StyledProperty, TEXT_STYLE_SIZE> TextStyle;
+
+
+const TextStyle* textStyle(Tid);
+const TextStyle* textStyle(const char*);
+
+const char* textStyleName(Tid);
+QString textStyleUserName(Tid);
+Tid textStyleFromName(const QString&);
+
+const std::vector<Tid>& allTextStyles();
+const std::vector<Tid>& primaryTextStyles();
 
 #ifndef NDEBUG
 extern void checkStyles();

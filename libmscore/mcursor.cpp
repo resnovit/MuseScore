@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Music Composition & Notation
-//  $Id:$
 //
 //  Copyright (C) 2012 Werner Schweer
 //
@@ -33,12 +32,9 @@ extern MScore* mscore;
 //   MCursor
 //---------------------------------------------------------
 
-MCursor::MCursor(Score* s)
+MCursor::MCursor(MasterScore* s)
       {
-      if (s)
-            _score = s->masterScore();
-      else
-            _score = 0;
+      _score = s;
       move(0, 0);
       }
 
@@ -74,7 +70,7 @@ Chord* MCursor::addChord(int pitch, const TDuration& duration)
       createMeasures();
       Measure* measure = _score->tick2measure(_tick);
       Segment* segment = measure->getSegment(SegmentType::ChordRest, _tick);
-      Chord* chord = static_cast<Chord*>(segment->element(_track));
+      Chord* chord = toChord(segment->element(_track));
       if (chord == 0) {
             chord = new Chord(_score);
             chord->setTrack(_track);
@@ -164,6 +160,7 @@ void MCursor::addPart(const QString& instrument)
             qFatal("Did not find instrument <%s>", qPrintable(instrument));
             }
       part->initFromInstrTemplate(it);
+      staff->init(it, 0, 0);
       _score->appendPart(part);
       _score->insertStaff(staff, 0);
       }

@@ -40,7 +40,7 @@ QVector<ScoreFont> ScoreFont::_scoreFonts {
       ScoreFont("MuseJazz",   "MuseJazz",     ":/fonts/musejazz/", "MuseJazz.otf" ),
       };
 
-QJsonObject ScoreFont::_glyphnamesJson;
+std::array<uint, size_t(SymId::lastSym)+1> ScoreFont::_mainSymCodeTable { 0 };
 
 //---------------------------------------------------------
 //   table of symbol names
@@ -2661,14 +2661,14 @@ const std::array<const char*, int(SymId::lastSym)+1> Sym::symNames = { {
 
 //    MuseScore local symbols, precomposed symbols to mimic some emmentaler glyphs
 
-      "ornamentPrallMordent",
-      "ornamentUpPrall",
-      "ornamentUpMordent",
-      "ornamentPrallDown",
-      "ornamentDownPrall",
-      "ornamentDownMordent",
-      "ornamentPrallUp",
-      "ornamentLinePrall",
+      "ornamentPrallMordent",       // ornamentPrecompTrillWithMordent ?
+      "ornamentUpPrall",            // ornamentPrecompSlideTrillDAnglebert ?
+      "ornamentUpMordent",          // ornamentPrecompSlideTrillBach ?
+      "ornamentPrallDown",          // ornamentPrecompTrillLowerSuffix ?
+//      "ornamentDownPrall",        // -> SymId::ornamentPrecompMordentUpperPrefix },
+      "ornamentDownMordent",        // ornamentPrecompTurnTrillBach ?
+      "ornamentPrallUp",            // ornamentPrecompTrillSuffixDandrieu ?
+      "ornamentLinePrall",          // ornamentPRecompAppoggTrill ?
 
 //    additional symbols
 
@@ -2920,8 +2920,7 @@ const std::array<const char*, int(SymId::lastSym)+1> Sym::symUserNames = { {
       QT_TRANSLATE_NOOP("symUserNames", "Push"),
       QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, 8' stop + upper tremolo 8' stop + 16' stop (accordion)"),
       QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, lower tremolo 8' stop + 8' stop + upper tremolo 8' stop (authentic musette)"),
-      //QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, 8' stop + 16' stop (bandone\\u00f3n)"),
-      QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, 8' stop + 16' stop (bandoneón)"), // workaround for Qt lupdate bug https://bugreports.qt.io/browse/QTBUG-35164
+      QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, 8' stop + 16' stop (bandone\u00f3n)"),
       QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, 16' stop (bassoon)"),
       QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, 8' stop (clarinet)"),
       QT_TRANSLATE_NOOP("symUserNames", "Right hand, 3 ranks, lower tremolo 8' stop + 8' stop + upper tremolo 8' stop + 16' stop"),
@@ -2970,10 +2969,10 @@ const std::array<const char*, int(SymId::lastSym)+1> Sym::symUserNames = { {
       "Bakiye (sharp)",
       "Accidental bracket, left",
       "Accidental bracket, right",
-      //QT_TRANSLATE_NOOP("symUserNames", "B\u00fcy\u00fck m\u00fccenneb (flat)"),
-      QT_TRANSLATE_NOOP("symUserNames", "Büyük mücenneb (flat)"),  // workaround for Qt lupdate bug https://bugreports.qt.io/browse/QTBUG-35164
+      //(QT_TRANSLATE_NOOP("symUserNames", "B\u00fcy\u00fck m\u00fccenneb (flat)"),
+      QT_TRANSLATE_NOOP("symUserNames", "B\u00fcy\u00fck mücenneb (flat)"),
       //QT_TRANSLATE_NOOP("symUserNames", "B\u00fcy\u00fck m\u00fccenneb (sharp)"),
-      QT_TRANSLATE_NOOP("symUserNames", "Büyük mücenneb (sharp)"), // workaround for Qt lupdate bug https://bugreports.qt.io/browse/QTBUG-35164
+      QT_TRANSLATE_NOOP("symUserNames", "B\u00fcy\u00fck mücenneb (sharp)"),
       "Combining close curly brace",
       "Combining lower by one 17-limit schisma",
       "Combining lower by one 19-limit schisma",
@@ -3047,7 +3046,7 @@ const std::array<const char*, int(SymId::lastSym)+1> Sym::symUserNames = { {
       QT_TRANSLATE_NOOP("symUserNames", "Koron (quarter tone flat)"),
       "K\u00fc\u00e7\u00fck m\u00fccenneb (flat)",
       //QT_TRANSLATE_NOOP("symUserNames", "K\u00fc\u00e7\u00fck m\u00fccenneb (sharp)"),
-      QT_TRANSLATE_NOOP("symUserNames", "Küçük mücenneb (sharp)"), // workaround for Qt lupdate bug https://bugreports.qt.io/browse/QTBUG-35164
+      QT_TRANSLATE_NOOP("symUserNames", "K\u00fc\u00e7\u00fck mücenneb (sharp)"),
       "Large double sharp",
       "Lower by one septimal comma",
       "Lower by one tridecimal quartertone",
@@ -3270,10 +3269,8 @@ const std::array<const char*, int(SymId::lastSym)+1> Sym::symUserNames = { {
       QT_TRANSLATE_NOOP("symUserNames", "Tenuto-accent above"),
       QT_TRANSLATE_NOOP("symUserNames", "Tenuto-accent below"),
       QT_TRANSLATE_NOOP("symUserNames", "Tenuto below"),
-      //QT_TRANSLATE_NOOP("symUserNames", "Lour\\u00e9 (tenuto-staccato) above"),
-      QT_TRANSLATE_NOOP("symUserNames", "Louré (tenuto-staccato) above"), // workaround for Qt lupdate bug https://bugreports.qt.io/browse/QTBUG-35164
-      //QT_TRANSLATE_NOOP("symUserNames", "Lour\\u00e9 (tenuto-staccato) below"),
-      QT_TRANSLATE_NOOP("symUserNames", "Louré (tenuto-staccato) below"), // workaround for Qt lupdate bug https://bugreports.qt.io/browse/QTBUG-35164
+      QT_TRANSLATE_NOOP("symUserNames", "Lour\u00e9 (tenuto-staccato) above"),
+      QT_TRANSLATE_NOOP("symUserNames", "Lour\u00e9 (tenuto-staccato) below"),
       QT_TRANSLATE_NOOP("symUserNames", "Unstress above"),
       QT_TRANSLATE_NOOP("symUserNames", "Unstress below"),
       "Augmentation dot",
@@ -5329,6 +5326,7 @@ struct oldName {
 
 QHash<QString, SymId> Sym::lonhash;
 QVector<oldName> oldNames = {
+//      {"ornamentDownPrall",                     SymId::ornamentPrecompMordentUpperPrefix },
       {"clef eight",                            SymId::clef8},
       //{"clef one"                             SymId::},
       //{"clef five"                            SymId::},
@@ -5376,7 +5374,7 @@ QVector<oldName> oldNames = {
       {"right parenthesis",                     SymId::noteheadParenthesisRight },  // accidentals.rightparen SMULF parenth. for noteheads used instead
       {"left parenthesis",                      SymId::noteheadParenthesisLeft },   // accidentals.leftparen
 
-      {"arrowheads.open.01",                    SymId::arrowheadWhiteRight }, // arrowheads.open.01 imilar, not identical in SMuFL
+      {"arrowheads.open.01",                    SymId::arrowheadWhiteRight }, // arrowheads.open.01 similar, not identical in SMuFL
       {"arrowheads.open.0M1",                   SymId::arrowheadWhiteLeft },  // arrowheads.open.0M1
       {"arrowheads.open.11",                    SymId::arrowheadWhiteUp },    // arrowheads.open.11
       {"arrowheads.open.1M1",                   SymId::arrowheadWhiteDown },  // arrowheads.open.1M1
@@ -5496,14 +5494,16 @@ QVector<oldName> oldNames = {
       {"prall",                                 SymId::ornamentMordent },           // scripts.prall
       {"mordent",                               SymId::ornamentMordentInverted },   // scripts.mordent
       {"prall prall",                           SymId::ornamentTremblement },       // scripts.prallprall
+
       {"prall mordent",                         SymId::ornamentPrallMordent },      // scripts.prallmordent
       {"up prall",                              SymId::ornamentUpPrall },           // scripts.upprall
       {"up mordent",                            SymId::ornamentUpMordent },         // scripts.upmordent
       {"prall down",                            SymId::ornamentPrallDown },         // scripts.pralldown
-      {"down prall",                            SymId::ornamentDownPrall },         // scripts.downprall
+//      {"down prall",                            SymId::ornamentDownPrall },         // scripts.downprall
       {"down mordent",                          SymId::ornamentDownMordent },       // scripts.downmordent
       {"prall up",                              SymId::ornamentPrallUp },           // scripts.prallup
       {"line prall",                            SymId::ornamentLinePrall },         // scripts.lineprall
+
       {"schleifer",                             SymId::ornamentPrecompSlide },      // scripts.schleifer
       {"caesura straight",                      SymId::caesura },                   // scripts.caesura.straight
       {"caesura curved",                        SymId::caesuraCurved },             // scripts.caesura.curved
@@ -5660,9 +5660,9 @@ void ScoreFont::draw(SymId id, QPainter* painter, const QSizeF& mag, const QPoin
                   font->setFamily(_family);
                   font->setStyleStrategy(QFont::NoFontMerging);
                   font->setHintingPreference(QFont::PreferVerticalHinting);
-                  qreal size = 20.0 * MScore::pixelRatio;
-                  font->setPointSize(size);
                   }
+            qreal size = 20.0 * MScore::pixelRatio;
+            font->setPointSize(size);
             QSizeF imag = QSizeF(1.0 / mag.width(), 1.0 / mag.height());
             painter->scale(mag.width(), mag.height());
             painter->setFont(*font);
@@ -5683,6 +5683,7 @@ void ScoreFont::draw(SymId id, QPainter* painter, const QSizeF& mag, const QPoin
 
       GlyphKey gk(face, id, mag.width(), mag.height(), worldScale, color);
       GlyphPixmap* pm = cache->object(gk);
+
       if (!pm) {
             FT_Matrix matrix {
                   scale16X, 0,
@@ -5702,7 +5703,7 @@ void ScoreFont::draw(SymId id, QPainter* painter, const QSizeF& mag, const QPoin
             FT_Bitmap* bm     = &gb->bitmap;
 
             if (bm->width == 0 || bm->rows == 0) {
-                  qDebug("zero glyph");
+                  qDebug("zero glyph, id %d", int(id));
                   return;
                   }
             QImage img(QSize(bm->width, bm->rows), QImage::Format_ARGB32);
@@ -5783,13 +5784,22 @@ const char* Sym::id2name(SymId id)
 
 void initScoreFonts()
       {
-      ScoreFont::initGlyphNamesJson();
+      QJsonObject glyphNamesJson(ScoreFont::initGlyphNamesJson());
+      if (glyphNamesJson.empty())
+            qFatal("initGlyphNamesJson failed");
       int error = FT_Init_FreeType(&ftlib);
       if (!ftlib || error)
             qFatal("init freetype library failed");
-      int index = 0;
-      for (auto i : Sym::symNames)
-            Sym::lnhash.insert(i, SymId(index++));
+      for (size_t i = 0; i < Sym::symNames.size(); ++i) {
+            const char* name = Sym::symNames[i];
+            Sym::lnhash.insert(name, SymId(i));
+            bool ok;
+            uint code = glyphNamesJson.value(name).toObject().value("codepoint").toString().mid(2).toUInt(&ok, 16);
+            if (ok)
+                  ScoreFont::_mainSymCodeTable[i] = code;
+            else if (MScore::debugMode)
+                  qDebug("codepoint not recognized for glyph %s", qPrintable(name));
+            }
       for (oldName i : oldNames)
             Sym::lonhash.insert(i.name, SymId(i.symId));
       QFont::insertSubstitution("MScore Text",    "Bravura Text");
@@ -5803,16 +5813,9 @@ void initScoreFonts()
 //   codeToString
 //---------------------------------------------------------
 
-static QString codeToString(int code)
+static QString codeToString(uint code)
       {
-      QString s;
-      if (code & 0xffff0000) {
-            s = QChar(QChar::highSurrogate(code));
-            s += QChar(QChar::lowSurrogate(code));
-            }
-      else
-            s = QChar(code);
-      return s;
+      return QString::fromUcs4(&code, 1);
       }
 
 //---------------------------------------------------------
@@ -5821,7 +5824,15 @@ static QString codeToString(int code)
 
 QString ScoreFont::toString(SymId id) const
       {
-      return codeToString(sym(id).code());
+      const Sym& s = sym(id);
+      int code;
+      if (s.isValid())
+            code = s.code();
+      else {
+            // fallback: search in the common SMuFL table
+            code = _mainSymCodeTable[size_t(id)];
+            }
+      return codeToString(code);
       }
 
 //---------------------------------------------------------
@@ -5874,18 +5885,13 @@ void ScoreFont::load()
       qreal pixelSize = 200.0;
       FT_Set_Pixel_Sizes(face, 0, int(pixelSize+.5));
 
-      for (auto i : ScoreFont::glyphNamesJson().keys()) {
-            bool ok;
-            int code = ScoreFont::glyphNamesJson().value(i).toObject().value("codepoint").toString().mid(2).toInt(&ok, 16);
-            if (!ok)
-                  qDebug("codepoint not recognized for glyph %s", qPrintable(i));
-            if (Sym::lnhash.contains(i)) {
-                  SymId symId = Sym::lnhash.value(i);
-                  Sym* sym    = &_symbols[int(symId)];
-                  computeMetrics(sym, code);
-                  }
-            else
-                  qDebug("unknown glyph: %s", qPrintable(i));
+      for (size_t id = 0; id < _mainSymCodeTable.size(); ++id) {
+            uint code = _mainSymCodeTable[id];
+            if (code == 0)
+                  continue;
+            SymId symId = SymId(id);
+            Sym* sym    = &_symbols[int(symId)];
+            computeMetrics(sym, code);
             }
 
       QJsonParseError error;
@@ -5909,63 +5915,63 @@ void ScoreFont::load()
                   continue;
                   }
             Sym* sym = &_symbols[int(symId)];
-            for (auto i : ooo.keys()) {
-                  if (i == "stemDownNW") {
-                        qreal x = ooo.value(i).toArray().at(0).toDouble();
-                        qreal y = ooo.value(i).toArray().at(1).toDouble();
+            for (auto j : ooo.keys()) {
+                  if (j == "stemDownNW") {
+                        qreal x = ooo.value(j).toArray().at(0).toDouble();
+                        qreal y = ooo.value(j).toArray().at(1).toDouble();
                         sym->setStemDownNW(QPointF(4.0 * DPI_F * x, 4.0 * DPI_F * -y));
                         }
-                  else if (i == "stemUpSE") {
-                        qreal x = ooo.value(i).toArray().at(0).toDouble();
-                        qreal y = ooo.value(i).toArray().at(1).toDouble();
+                  else if (j == "stemUpSE") {
+                        qreal x = ooo.value(j).toArray().at(0).toDouble();
+                        qreal y = ooo.value(j).toArray().at(1).toDouble();
                         sym->setStemUpSE(QPointF(4.0 * DPI_F * x, 4.0 * DPI_F * -y));
                         }
-                  else if (i == "cutOutNE") {
-                        qreal x = ooo.value(i).toArray().at(0).toDouble() * scale;
-                        qreal y = ooo.value(i).toArray().at(1).toDouble() * scale;
+                  else if (j == "cutOutNE") {
+                        qreal x = ooo.value(j).toArray().at(0).toDouble() * scale;
+                        qreal y = ooo.value(j).toArray().at(1).toDouble() * scale;
                         sym->setCutOutNE(QPointF(x, -y));
                         }
-                  else if (i == "cutOutNW") {
-                        qreal x = ooo.value(i).toArray().at(0).toDouble() * scale;
-                        qreal y = ooo.value(i).toArray().at(1).toDouble() * scale;
+                  else if (j == "cutOutNW") {
+                        qreal x = ooo.value(j).toArray().at(0).toDouble() * scale;
+                        qreal y = ooo.value(j).toArray().at(1).toDouble() * scale;
                         sym->setCutOutNW(QPointF(x, -y));
                         }
-                  else if (i == "cutOutSE") {
-                        qreal x = ooo.value(i).toArray().at(0).toDouble() * scale;
-                        qreal y = ooo.value(i).toArray().at(1).toDouble() * scale;
+                  else if (j == "cutOutSE") {
+                        qreal x = ooo.value(j).toArray().at(0).toDouble() * scale;
+                        qreal y = ooo.value(j).toArray().at(1).toDouble() * scale;
                         sym->setCutOutSE(QPointF(x, -y));
                         }
-                  else if (i == "cutOutSW") {
-                        qreal x = ooo.value(i).toArray().at(0).toDouble() * scale;
-                        qreal y = ooo.value(i).toArray().at(1).toDouble() * scale;
+                  else if (j == "cutOutSW") {
+                        qreal x = ooo.value(j).toArray().at(0).toDouble() * scale;
+                        qreal y = ooo.value(j).toArray().at(1).toDouble() * scale;
                         sym->setCutOutSW(QPointF(x, -y));
                         }
                   }
             }
       oo = metadataJson.value("engravingDefaults").toObject();
-      static std::list<std::pair<QString, StyleIdx>> engravingDefaultsMapping = {
-            { "staffLineThickness",            StyleIdx::staffLineWidth },
-            { "stemThickness",                 StyleIdx::stemWidth },
-            { "beamThickness",                 StyleIdx::beamWidth },
-            { "beamSpacing",                   StyleIdx::beamDistance },
-            { "legerLineThickness",            StyleIdx::ledgerLineWidth },
-            { "legerLineExtension",            StyleIdx::ledgerLineLength },
-            { "slurEndpointThickness",         StyleIdx::SlurEndWidth },
-            { "slurMidpointThickness",         StyleIdx::SlurMidWidth },
-            { "thinBarlineThickness",          StyleIdx::barWidth },
-            { "thinBarlineThickness",          StyleIdx::doubleBarWidth },
-            { "thickBarlineThickness",         StyleIdx::endBarWidth },
-            { "dashedBarlineThickness",        StyleIdx::barWidth },
-            { "barlineSeparation",             StyleIdx::doubleBarDistance },
-            { "barlineSeparation",             StyleIdx::endBarDistance },
-            { "repeatBarlineDotSeparation",    StyleIdx::repeatBarlineDotSeparation },
-            { "bracketThickness",              StyleIdx::bracketWidth },
-            { "hairpinThickness",              StyleIdx::hairpinLineWidth },
-            { "octaveLineThickness",           StyleIdx::ottavaLineWidth },
-            { "pedalLineThickness",            StyleIdx::pedalLineWidth },
-            { "repeatEndingLineThickness",     StyleIdx::voltaLineWidth },
-            { "lyricLineThickness",            StyleIdx::lyricsLineThickness },
-            { "tupletBracketThickness",        StyleIdx::tupletBracketWidth }
+      static std::list<std::pair<QString, Sid>> engravingDefaultsMapping = {
+            { "staffLineThickness",            Sid::staffLineWidth },
+            { "stemThickness",                 Sid::stemWidth },
+            { "beamThickness",                 Sid::beamWidth },
+            { "beamSpacing",                   Sid::beamDistance },
+            { "legerLineThickness",            Sid::ledgerLineWidth },
+            { "legerLineExtension",            Sid::ledgerLineLength },
+            { "slurEndpointThickness",         Sid::SlurEndWidth },
+            { "slurMidpointThickness",         Sid::SlurMidWidth },
+            { "thinBarlineThickness",          Sid::barWidth },
+            { "thinBarlineThickness",          Sid::doubleBarWidth },
+            { "thickBarlineThickness",         Sid::endBarWidth },
+            { "dashedBarlineThickness",        Sid::barWidth },
+            { "barlineSeparation",             Sid::doubleBarDistance },
+            { "barlineSeparation",             Sid::endBarDistance },
+            { "repeatBarlineDotSeparation",    Sid::repeatBarlineDotSeparation },
+            { "bracketThickness",              Sid::bracketWidth },
+            { "hairpinThickness",              Sid::hairpinLineWidth },
+            { "octaveLineThickness",           Sid::ottavaLineWidth },
+            { "pedalLineThickness",            Sid::pedalLineWidth },
+            { "repeatEndingLineThickness",     Sid::voltaLineWidth },
+            { "lyricLineThickness",            Sid::lyricsLineThickness },
+            { "tupletBracketThickness",        Sid::tupletBracketWidth }
             };
       for (auto i : oo.keys()) {
             for (auto mapping : engravingDefaultsMapping) {
@@ -5975,7 +5981,7 @@ void ScoreFont::load()
                         _textEnclosureThickness = oo.value(i).toDouble();
                   }
             }
-      _engravingDefaults.push_back(std::make_pair(StyleIdx::MusicalTextFont, QString("%1 Text").arg(_family)));
+      _engravingDefaults.push_back(std::make_pair(Sid::MusicalTextFont, QString("%1 Text").arg(_family)));
 
       // create missing composed glyphs
       struct Composed {
@@ -6012,6 +6018,7 @@ void ScoreFont::load()
                   SymId::ornamentZigZagLineNoRightEnd,
                   SymId::ornamentBottomRightConcaveStroke,
                   }},
+#if 0
             { SymId::ornamentDownPrall,
                   {
                   SymId::ornamentTopLeftConvexStroke,
@@ -6019,6 +6026,7 @@ void ScoreFont::load()
                   SymId::ornamentZigZagLineNoRightEnd,
                   SymId::ornamentZigZagLineWithRightEnd
                   }},
+#endif
             { SymId::ornamentDownMordent,
                   {
                   SymId::ornamentLeftVerticalStroke,
@@ -6216,22 +6224,22 @@ const char* ScoreFont::fallbackTextFont()
 //   initGlyphNamesJson
 //---------------------------------------------------------
 
-bool ScoreFont::initGlyphNamesJson()
+QJsonObject ScoreFont::initGlyphNamesJson()
       {
       QFile fi(":fonts/smufl/glyphnames.json");
       if (!fi.open(QIODevice::ReadOnly)) {
             qDebug("ScoreFont: open glyph names file <%s> failed", qPrintable(fi.fileName()));
-            return false;
+            return QJsonObject();
             }
       QJsonParseError error;
-      _glyphnamesJson = QJsonDocument::fromJson(fi.readAll(), &error).object();
+      QJsonObject glyphNamesJson = QJsonDocument::fromJson(fi.readAll(), &error).object();
       if (error.error != QJsonParseError::NoError) {
             qDebug("Json parse error in <%s>(offset: %d): %s", qPrintable(fi.fileName()),
                error.offset, qPrintable(error.errorString()));
-            return false;
+            return QJsonObject();
             }
       fi.close();
-      return true;
+      return glyphNamesJson;
       }
 
 //---------------------------------------------------------

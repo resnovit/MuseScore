@@ -44,12 +44,15 @@ class InstrumentTemplate;
 //   @P volume          int
 //---------------------------------------------------------
 
-class Part : public ScoreElement {
+class Part final : public ScoreElement {
       QString _partName;            ///< used in tracklist (mixer)
       InstrumentList _instruments;
       QList<Staff*> _staves;
       QString _id;                  ///< used for MusicXml import
       bool _show;                   ///< show part in partitur if true
+
+      static const int DEFAULT_COLOR = 0x3399ff;
+      int _color;                   ///User specified color for helping to label parts
 
    public:
       Part(Score* = 0);
@@ -89,17 +92,17 @@ class Part : public ScoreElement {
 
       void setStaves(int);
 
-      int volume() const;
-      void setVolume(int volume);
+      double volume() const;
+      void setVolume(double volume);
       bool mute() const;
       void setMute(bool mute);
 
-      int reverb() const;
-      void setReverb(int);
-      int chorus() const;
-      void setChorus(int);
-      int pan() const;
-      void setPan(int pan);
+      double reverb() const;
+      void setReverb(double);
+      double chorus() const;
+      void setChorus(double);
+      double pan() const;
+      void setPan(double pan);
       int midiProgram() const;
       void setMidiProgram(int, int bank = 0);
 
@@ -124,9 +127,11 @@ class Part : public ScoreElement {
 
       QString partName() const                 { return _partName; }
       void setPartName(const QString& s)       { _partName = s; }
+      int color() const { return _color; }
+      void setColor(int value) { _color = value; }
 
-      QVariant getProperty(P_ID) const override;
-      bool setProperty(P_ID, const QVariant&) override;
+      QVariant getProperty(Pid) const override;
+      bool setProperty(Pid, const QVariant&) override;
 
       int lyricCount();
       int harmonyCount();

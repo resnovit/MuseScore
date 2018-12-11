@@ -22,6 +22,7 @@
 #include "chord.h"
 #include "undo.h"
 #include "sym.h"
+#include "musescoreCore.h"
 
 namespace Ms {
 
@@ -76,20 +77,28 @@ static Dyn dynList[] = {
       };
 
 //---------------------------------------------------------
+//   dynamicsStyle
+//---------------------------------------------------------
+
+static const ElementStyle dynamicsStyle {
+      { Sid::dynamicsPlacement, Pid::PLACEMENT },
+      };
+
+//---------------------------------------------------------
 //   Dynamic
 //---------------------------------------------------------
 
 Dynamic::Dynamic(Score* s)
-   : Text(SubStyle::DYNAMICS, s)
+   : TextBase(s, Tid::DYNAMICS, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)
       {
-      setFlags(ElementFlag::MOVABLE | ElementFlag::SELECTABLE | ElementFlag::ON_STAFF);
-      _velocity = -1;
-      _dynRange = Range::PART;
-      _dynamicType  = Type::OTHER;
+      initElementStyle(&dynamicsStyle);
+      _velocity    = -1;
+      _dynRange    = Range::PART;
+      _dynamicType = Type::OTHER;
       }
 
 Dynamic::Dynamic(const Dynamic& d)
-   : Text(d)
+   : TextBase(d)
       {
       _dynamicType = d._dynamicType;
       _velocity    = d._velocity;
@@ -113,11 +122,11 @@ void Dynamic::write(XmlWriter& xml) const
       {
       if (!xml.canWrite(this))
             return;
-      xml.stag("Dynamic");
+      xml.stag(this);
       xml.tag("subtype", dynamicTypeName());
-      writeProperty(xml, P_ID::VELOCITY);
-      writeProperty(xml, P_ID::DYNAMIC_RANGE);
-      Text::writeProperties(xml, dynamicType() == Type::OTHER);
+      writeProperty(xml, Pid::VELOCITY);
+      writeProperty(xml, Pid::DYNAMIC_RANGE);
+      TextBase::writeProperties(xml, dynamicType() == Type::OTHER);
       xml.etag();
       }
 
@@ -135,11 +144,9 @@ void Dynamic::read(XmlReader& e)
                   _velocity = e.readInt();
             else if (tag == "dynType")
                   _dynRange = Range(e.readInt());
-            else if (!Text::readProperties(e))
+            else if (!TextBase::readProperties(e))
                   e.unknown();
             }
-      if (subStyle() == SubStyle::DEFAULT)
-            initSubStyle(SubStyle::DYNAMICS);
       }
 
 //---------------------------------------------------------
@@ -148,18 +155,7 @@ void Dynamic::read(XmlReader& e)
 
 void Dynamic::layout()
       {
-      if (autoplace())
-            setUserOff(QPointF());
-
-      qreal y;
-      if (placeAbove())
-            y = score()->styleP(StyleIdx::dynamicsPosAbove);
-      else {
-            qreal sh = staff() ? staff()->height() : 0;
-            y = score()->styleP(StyleIdx::dynamicsPosBelow) + sh + lineSpacing();
-            }
-      setPos(QPointF(0.0, y));
-      Text::layout1();
+      TextBase::layout();
 
       Segment* s = segment();
       if (s) {
@@ -168,7 +164,7 @@ void Dynamic::layout()
                   Element* e = s->element(t + voice);
                   if (!e)
                         continue;
-                  if (e->isChord()) {
+                  if (e->isChord() && (align() & Align::HCENTER)) {
                         Chord* c = toChord(e);
                         qreal noteHeadWidth = score()->noteHeadWidth() * c->mag();
                         if (c->stem() && !c->up())  // stem down
@@ -183,7 +179,6 @@ void Dynamic::layout()
             }
       else
             setPos(QPointF());      // for palette
-      adjustReadPos();
       }
 
 //-------------------------------------------------------------------
@@ -198,27 +193,21 @@ void Dynamic::doAutoplace()
       if (!(s && autoplace()))
             return;
 
-      setUserOff(QPointF());
-
-      qreal minDistance = score()->styleP(StyleIdx::dynamicsMinDistance);
-      const Shape& s1   = s->measure()->staffShape(staffIdx());
-      Shape s2          = shape().translated(s->pos() + pos());
-
-#if 0
-      bool val = s1.intersects(bbox().translated(s->pos() + pos()));
-      if (!val)
-            return;
-#endif
+      qreal minDistance = score()->styleP(Sid::dynamicsMinDistance);
+      QRectF r          = bbox().translated(pos() + s->pos() + s->measure()->pos());
+      Skyline& sl       = s->measure()->system()->staff(staffIdx())->skyline();
+      SkylineLine sk(!placeAbove());
+      sk.add(r);
 
       if (placeAbove()) {
-            qreal d = s2.minVerticalDistance(s1);
+            qreal d = sk.minDistance(sl.north());
             if (d > -minDistance)
-                  rUserYoffset() = -d - minDistance;
+                  rypos() += -(d + minDistance);
             }
       else {
-            qreal d = s1.minVerticalDistance(s2);
+            qreal d = sl.south().minDistance(sk);
             if (d > -minDistance)
-                  rUserYoffset() = d + minDistance;
+                  rypos() += d + minDistance;
             }
       }
 
@@ -256,7 +245,7 @@ QString Dynamic::dynamicTypeName() const
 
 void Dynamic::startEdit(EditData& ed)
       {
-      Text::startEdit(ed);
+      TextBase::startEdit(ed);
       }
 
 //---------------------------------------------------------
@@ -265,7 +254,7 @@ void Dynamic::startEdit(EditData& ed)
 
 void Dynamic::endEdit(EditData& ed)
       {
-      Text::endEdit(ed);
+      TextBase::endEdit(ed);
       if (xmlText() != QString::fromUtf8(dynList[int(_dynamicType)].text))
             _dynamicType = Type::OTHER;
       }
@@ -276,7 +265,7 @@ void Dynamic::endEdit(EditData& ed)
 
 void Dynamic::reset()
       {
-      Text::reset();
+      TextBase::reset();
       }
 
 //---------------------------------------------------------
@@ -298,10 +287,10 @@ QRectF Dynamic::drag(EditData& ed)
             if (seg != segment() || staffIdx() != si) {
                   QPointF pos1(canvasPos());
                   score()->undo(new ChangeParent(this, seg, si));
-                  setUserOff(QPointF());
+                  setOffset(QPointF());
                   layout();
                   QPointF pos2(canvasPos());
-                  setUserOff(pos1 - pos2);
+                  setOffset(pos1 - pos2);
                   ed.startMove = pos2;
                   }
             }
@@ -314,21 +303,24 @@ QRectF Dynamic::drag(EditData& ed)
 
 void Dynamic::undoSetDynRange(Range v)
       {
-      undoChangeProperty(P_ID::DYNAMIC_RANGE, int(v));
+      undoChangeProperty(Pid::DYNAMIC_RANGE, int(v));
       }
 
 //---------------------------------------------------------
 //   getProperty
 //---------------------------------------------------------
 
-QVariant Dynamic::getProperty(P_ID propertyId) const
+QVariant Dynamic::getProperty(Pid propertyId) const
       {
       switch (propertyId) {
-            case P_ID::DYNAMIC_RANGE:     return int(_dynRange);
-            case P_ID::VELOCITY:          return velocity();
-            case P_ID::SUBTYPE:           return int(_dynamicType);
+            case Pid::DYNAMIC_RANGE:
+                  return int(_dynRange);
+            case Pid::VELOCITY:
+                  return velocity();
+            case Pid::SUBTYPE:
+                  return int(_dynamicType);
             default:
-                  return Text::getProperty(propertyId);
+                  return TextBase::getProperty(propertyId);
             }
       }
 
@@ -336,20 +328,20 @@ QVariant Dynamic::getProperty(P_ID propertyId) const
 //   setProperty
 //---------------------------------------------------------
 
-bool Dynamic::setProperty(P_ID propertyId, const QVariant& v)
+bool Dynamic::setProperty(Pid propertyId, const QVariant& v)
       {
       switch (propertyId) {
-            case P_ID::DYNAMIC_RANGE:
+            case Pid::DYNAMIC_RANGE:
                   _dynRange = Range(v.toInt());
                   break;
-            case P_ID::VELOCITY:
+            case Pid::VELOCITY:
                   _velocity = v.toInt();
                   break;
-            case P_ID::SUBTYPE:
+            case Pid::SUBTYPE:
                   _dynamicType = Type(v.toInt());
                   break;
             default:
-                  if (!Text::setProperty(propertyId, v))
+                  if (!TextBase::setProperty(propertyId, v))
                         return false;
                   break;
             }
@@ -361,18 +353,29 @@ bool Dynamic::setProperty(P_ID propertyId, const QVariant& v)
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant Dynamic::propertyDefault(P_ID id) const
+QVariant Dynamic::propertyDefault(Pid id) const
       {
       switch(id) {
-            case P_ID::SUB_STYLE:
-                  return int(SubStyle::DYNAMICS);
-            case P_ID::DYNAMIC_RANGE:
+            case Pid::SUB_STYLE:
+                  return int(Tid::DYNAMICS);
+            case Pid::DYNAMIC_RANGE:
                   return int(Range::PART);
-            case P_ID::VELOCITY:
+            case Pid::VELOCITY:
                   return -1;
             default:
-                  return Text::propertyDefault(id);
+                  return TextBase::propertyDefault(id);
             }
+      }
+
+//---------------------------------------------------------
+//   getPropertyStyle
+//---------------------------------------------------------
+
+Sid Dynamic::getPropertyStyle(Pid pid) const
+      {
+      if (pid == Pid::OFFSET)
+            return placeAbove() ? Sid::dynamicsPosAbove : Sid::dynamicsPosBelow;
+      return TextBase::getPropertyStyle(pid);
       }
 
 //---------------------------------------------------------
@@ -411,6 +414,5 @@ QString Dynamic::screenReaderInfo() const
             }
       return QString("%1: %2").arg(Element::accessibleInfo()).arg(s);
       }
-
 }
 

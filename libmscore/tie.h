@@ -22,7 +22,7 @@ namespace Ms {
 ///    a single segment of slur; also used for Tie
 //---------------------------------------------------------
 
-class TieSegment : public SlurTieSegment {
+class TieSegment final : public SlurTieSegment {
       QPointF autoAdjustOffset;
 
       void setAutoAdjust(const QPointF& offset);
@@ -58,7 +58,7 @@ class TieSegment : public SlurTieSegment {
 //!    a Tie has a Note as startElement/endElement
 //---------------------------------------------------------
 
-class Tie : public SlurTie {
+class Tie final : public SlurTie {
       static Note* editStartNote;
       static Note* editEndNote;
 
@@ -74,19 +74,18 @@ class Tie : public SlurTie {
 
       void calculateDirection();
       virtual void write(XmlWriter& xml) const override;
-      virtual void read(XmlReader&) override;
 //      virtual void layout() override;
       virtual void slurPos(SlurPos*) override;
 
-      void layoutFor(System*);
-      void layoutBack(System*);
+      TieSegment* layoutFor(System*);
+      TieSegment* layoutBack(System*);
 
-      bool readProperties(XmlReader&);
-
-      TieSegment* frontSegment() const   { return (TieSegment*)spannerSegments().front();    }
-      TieSegment* backSegment() const    { return (TieSegment*)spannerSegments().back();     }
-      TieSegment* takeLastSegment()      { return (TieSegment*)spannerSegments().takeLast(); }
-      TieSegment* segmentAt(int n) const { return (TieSegment*)spannerSegments().at(n);      }
+      TieSegment* frontSegment()               { return toTieSegment(Spanner::frontSegment()); }
+      const TieSegment* frontSegment() const   { return toTieSegment(Spanner::frontSegment()); }
+      TieSegment* backSegment()                { return toTieSegment(Spanner::backSegment());  }
+      const TieSegment* backSegment() const    { return toTieSegment(Spanner::backSegment());  }
+      TieSegment* segmentAt(int n)             { return toTieSegment(Spanner::segmentAt(n));   }
+      const TieSegment* segmentAt(int n) const { return toTieSegment(Spanner::segmentAt(n));   }
 
       virtual SlurTieSegment* newSlurTieSegment() override { return new TieSegment(score()); }
       };

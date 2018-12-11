@@ -18,6 +18,14 @@
 
 namespace Ms {
 
+//---------------------------------------------------------
+//   markerStyle
+//---------------------------------------------------------
+
+static const ElementStyle markerStyle {
+      { Sid::repeatLeftPlacement, Pid::PLACEMENT },
+      };
+
 //must be in sync with Marker::Type enum
 const MarkerTypeItem markerTypeTable[] = {
       { Marker::Type::SEGNO   , QT_TRANSLATE_NOOP("markerType", "Segno")          },
@@ -40,10 +48,15 @@ int markerTypeTableSize()
 //---------------------------------------------------------
 
 Marker::Marker(Score* s)
-   : Text(SubStyle::REPEAT_LEFT, s)
+   : Marker(s, Tid::REPEAT_LEFT)
       {
+      }
+
+Marker::Marker(Score* s, Tid tid)
+   : TextBase(s, tid, ElementFlag::MOVABLE | ElementFlag::ON_STAFF | ElementFlag::SYSTEM)
+      {
+      initElementStyle(&markerStyle);
       _markerType = Type::FINE;
-      setFlags(ElementFlag::MOVABLE | ElementFlag::SELECTABLE | ElementFlag::ON_STAFF);
       setLayoutToParentWidth(true);
       }
 
@@ -83,13 +96,13 @@ void Marker::setMarkerType(Type t)
 
             case Type::FINE:
                   txt = "Fine";
-                  initSubStyle(SubStyle::REPEAT_RIGHT);
+                  initTid(Tid::REPEAT_RIGHT, true);
                   setLabel("fine");
                   break;
 
             case Type::TOCODA:
                   txt = "To Coda";
-                  initSubStyle(SubStyle::REPEAT_RIGHT);
+                  initTid(Tid::REPEAT_RIGHT, true);
                   setLabel("coda");
                   break;
 
@@ -104,6 +117,10 @@ void Marker::setMarkerType(Type t)
             setXmlText(txt);
       }
 
+//---------------------------------------------------------
+//   markerTypeUserName
+//---------------------------------------------------------
+
 QString Marker::markerTypeUserName() const
       {
       return qApp->translate("markerType", markerTypeTable[static_cast<int>(_markerType)].name.toUtf8().constData());
@@ -116,32 +133,7 @@ QString Marker::markerTypeUserName() const
 void Marker::styleChanged()
       {
       setMarkerType(_markerType);
-      }
-
-//---------------------------------------------------------
-//   adjustReadPos
-//---------------------------------------------------------
-
-void Marker::adjustReadPos()
-      {
-      if (!readPos().isNull()) {
-
-            QPointF uo;
-/*
-            if (score()->mscVersion() <= 114) {
-                  // rebase from Measure to Segment
-                  uo = userOff();
-                  uo.rx() -= segment()->pos().x();
-                  // 1.2 is always HCENTER aligned
-                  if ((textStyle().align() & Align::HMASK) == 0)    // Align::LEFT
-                        uo.rx() -= bbox().width() * .5;
-                  }
-            else
-*/
-                  uo = readPos() - ipos();
-            setUserOff(uo);
-            setReadPos(QPointF());
-            }
+      TextBase::styleChanged();
       }
 
 //---------------------------------------------------------
@@ -174,13 +166,15 @@ Marker::Type Marker::markerType(const QString& s) const
 
 void Marker::layout()
       {
-      setPos(QPointF(0.0, score()->styleP(StyleIdx::markerPosAbove)));
-      Text::layout1();
+      TextBase::layout();
+
       // although normally laid out to parent (measure) width,
       // force to center over barline if left-aligned
+
       if (layoutToParentWidth() && !(align() & (Align::RIGHT | Align::HCENTER)))
             rxpos() -= width() * 0.5;
-      adjustReadPos();
+
+      autoplaceMeasureElement(0.5 * spatium());
       }
 
 //---------------------------------------------------------
@@ -198,7 +192,7 @@ void Marker::read(XmlReader& e)
                   setLabel(s);
                   mt = markerType(s);
                   }
-            else if (!Text::readProperties(e))
+            else if (!TextBase::readProperties(e))
                   e.unknown();
             }
       setMarkerType(mt);
@@ -210,8 +204,8 @@ void Marker::read(XmlReader& e)
 
 void Marker::write(XmlWriter& xml) const
       {
-      xml.stag(name());
-      Text::writeProperties(xml);
+      xml.stag(this);
+      TextBase::writeProperties(xml);
       xml.tag("label", _label);
       xml.etag();
       }
@@ -222,7 +216,7 @@ void Marker::write(XmlWriter& xml) const
 
 void Marker::undoSetLabel(const QString& s)
       {
-      undoChangeProperty(P_ID::LABEL, s);
+      undoChangeProperty(Pid::LABEL, s);
       }
 
 //---------------------------------------------------------
@@ -231,41 +225,41 @@ void Marker::undoSetLabel(const QString& s)
 
 void Marker::undoSetMarkerType(Type t)
       {
-      undoChangeProperty(P_ID::MARKER_TYPE, int(t));
+      undoChangeProperty(Pid::MARKER_TYPE, int(t));
       }
 
 //---------------------------------------------------------
 //   getProperty
 //---------------------------------------------------------
 
-QVariant Marker::getProperty(P_ID propertyId) const
+QVariant Marker::getProperty(Pid propertyId) const
       {
       switch (propertyId) {
-            case P_ID::LABEL:
+            case Pid::LABEL:
                   return label();
-            case P_ID::MARKER_TYPE:
+            case Pid::MARKER_TYPE:
                   return int(markerType());
             default:
                   break;
             }
-      return Text::getProperty(propertyId);
+      return TextBase::getProperty(propertyId);
       }
 
 //---------------------------------------------------------
 //   setProperty
 //---------------------------------------------------------
 
-bool Marker::setProperty(P_ID propertyId, const QVariant& v)
+bool Marker::setProperty(Pid propertyId, const QVariant& v)
       {
       switch (propertyId) {
-            case P_ID::LABEL:
+            case Pid::LABEL:
                   setLabel(v.toString());
                   break;
-            case P_ID::MARKER_TYPE:
+            case Pid::MARKER_TYPE:
                   setMarkerType(Type(v.toInt()));
                   break;
             default:
-                  if (!Text::setProperty(propertyId, v))
+                  if (!TextBase::setProperty(propertyId, v))
                         return false;
                   break;
             }
@@ -277,19 +271,19 @@ bool Marker::setProperty(P_ID propertyId, const QVariant& v)
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant Marker::propertyDefault(P_ID propertyId) const
+QVariant Marker::propertyDefault(Pid propertyId) const
       {
       switch (propertyId) {
-            case P_ID::LABEL:
+            case Pid::LABEL:
                   return QString();
-
-            case P_ID::MARKER_TYPE:
+            case Pid::MARKER_TYPE:
                   return int(Type::FINE);
-
+            case Pid::PLACEMENT:
+                  return int(Placement::ABOVE);
             default:
                   break;
             }
-      return Text::propertyDefault(propertyId);
+      return TextBase::propertyDefault(propertyId);
       }
 
 

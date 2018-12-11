@@ -50,7 +50,7 @@ static const int MAX_DOTS = 4;
 //   @@ NoteHead
 //---------------------------------------------------------
 
-class NoteHead : public Symbol {
+class NoteHead final : public Symbol {
    public:
       enum class Group : signed char {
             HEAD_NORMAL = 0,
@@ -119,6 +119,7 @@ class NoteHead : public Symbol {
             HEAD_H,
             HEAD_H_SHARP,
 
+            HEAD_CUSTOM,
             HEAD_GROUPS,
             HEAD_INVALID = -1
             };
@@ -199,21 +200,19 @@ static const int INVALID_LINE = -10000;
 //   @P veloType         enum (Note.OFFSET_VAL, Note.USER_VAL)
 //---------------------------------------------------------------------------------------
 
-class Note : public Element {
+class Note final : public Element {
    public:
       enum class ValueType : char { OFFSET_VAL, USER_VAL };
-      int qmlAccidentalType() const { return int(accidentalType()); }
-      void qmlSetAccidentalType(int t) { setAccidentalType(static_cast<AccidentalType>(t)); }
 
    private:
       bool _ghost         { false };      ///< ghost note (guitar: death note)
-      bool _hidden        { false };      ///< markes this note as the hidden one if there are
+      bool _hidden        { false };      ///< marks this note as the hidden one if there are
                                           ///< overlapping notes; hidden notes are not played
                                           ///< and heads + accidentals are not shown
       bool _dotsHidden    { false };      ///< dots of hidden notes are hidden too
                                           ///< except if only one note is dotted
       bool _fretConflict  { false };      ///< used by TAB staves to mark a fretting conflict:
-                                          ///< two or mor enotes on the same string
+                                          ///< two or more notes on the same string
       bool dragMode       { false };
       bool _mirror        { false };      ///< True if note is mirrored at stem.
       bool _small         { false };
@@ -263,7 +262,7 @@ class Note : public Element {
       virtual void startDrag(EditData&) override;
       virtual QRectF drag(EditData&) override;
       virtual void endDrag(EditData&) override;
-      void endEdit(EditData&);
+      virtual void editDrag(EditData&) override;
       void addSpanner(Spanner*);
       void removeSpanner(Spanner*);
       int concertPitchIdx() const;
@@ -280,10 +279,14 @@ class Note : public Element {
       virtual Note* clone() const override  { return new Note(*this, false); }
       ElementType type() const override   { return ElementType::NOTE; }
 
+      virtual void undoUnlink() override;
+
       virtual qreal mag() const override;
 
       void layout();
       void layout2();
+      //setter is used only in drumset tools to setup the notehead preview in the drumset editor and the palette
+      void setCachedNoteheadSym(SymId i) { _cachedNoteheadSym = i; };
       void scanElements(void* data, void (*func)(void*, Element*), bool all=true);
       void setTrack(int val);
 
@@ -291,10 +294,14 @@ class Note : public Element {
 
       qreal headWidth() const;
       qreal headHeight() const;
-      qreal tabHeadWidth(StaffType* tab = 0) const;
-      qreal tabHeadHeight(StaffType* tab = 0) const;
+      qreal tabHeadWidth(const StaffType* tab = 0) const;
+      qreal tabHeadHeight(const StaffType* tab = 0) const;
       QPointF stemDownNW() const;
       QPointF stemUpSE() const;
+      qreal bboxXShift() const;
+      qreal noteheadCenterX() const;
+      qreal bboxRightPos() const;
+      qreal headBodyWidth() const;
 
       NoteHead::Group headGroup() const   { return _headGroup; }
       NoteHead::Type headType() const     { return _headType;  }
@@ -330,8 +337,6 @@ class Note : public Element {
       void setTpcFromPitch();
       int tpc1default(int pitch) const;
       int tpc2default(int pitch) const;
-//      void undoSetTpc1(int tpc)      { undoChangeProperty(P_ID::TPC1, tpc); }
-//      void undoSetTpc2(int tpc)      { undoChangeProperty(P_ID::TPC2, tpc); }
       int transposeTpc(int tpc);
 
       Accidental* accidental() const      { return _accidental; }
@@ -370,7 +375,9 @@ class Note : public Element {
       void setTieFor(Tie* t)          { _tieFor = t;     }
       void setTieBack(Tie* t)         { _tieBack = t;    }
       Note* firstTiedNote() const;
-      Note* lastTiedNote() const;
+      const Note* lastTiedNote() const;
+      void disconnectTiedNotes();
+      void connectTiedNotes();
 
       Chord* chord() const            { return (Chord*)parent(); }
       void setChord(Chord* a)         { setParent((Element*)a);  }
@@ -378,6 +385,7 @@ class Note : public Element {
 
       virtual void read(XmlReader&) override;
       virtual bool readProperties(XmlReader&) override;
+      virtual void readAddConnector(ConnectorInfoReader* info, bool pasteMode) override;
       virtual void write(XmlWriter&) const override;
 
       bool acceptDrop(EditData&) const override;
@@ -393,7 +401,6 @@ class Note : public Element {
 
       ElementList& el()                           { return _el; }
       const ElementList& el() const               { return _el; }
-//      QQmlListProperty<Ms::Element> qmlElements() { return QmlListAccess<Ms::Element>(this, _el); }
 
       int subchannel() const                    { return _subchannel; }
       void setSubchannel(int val)               { _subchannel = val;  }
@@ -419,8 +426,6 @@ class Note : public Element {
       NoteDot* dot(int n)                         { return _dots[n];          }
       const QVector<NoteDot*>& dots() const       { return _dots;             }
       QVector<NoteDot*>& dots()                   { return _dots;             }
-
-//      QQmlListProperty<Ms::NoteDot> qmlDots() { return QmlListAccess<Ms::NoteDot>(this, _dots);  }
 
       int qmlDotsCount();
       void updateAccidental(AccidentalState*);
@@ -457,9 +462,10 @@ class Note : public Element {
       void undoSetHeadGroup(NoteHead::Group);
       void undoSetHeadType(NoteHead::Type);
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
+      virtual QString propertyUserValue(Pid) const override;
 
       bool mark() const               { return _mark;   }
       void setMark(bool v) const      { _mark = v;   }

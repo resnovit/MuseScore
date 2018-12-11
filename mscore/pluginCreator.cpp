@@ -43,7 +43,7 @@ PluginCreator::PluginCreator(QWidget* parent)
       helpBrowser = 0;
 
       setObjectName("PluginCreator");
-      setIconSize(QSize(preferences.iconWidth * guiScaling, preferences.iconHeight * guiScaling));
+      setIconSize(QSize(preferences.getInt(PREF_UI_THEME_ICONWIDTH) * guiScaling, preferences.getInt(PREF_UI_THEME_ICONHEIGHT) * guiScaling));
 
       setupUi(this);
 
@@ -83,8 +83,8 @@ PluginCreator::PluginCreator(QWidget* parent)
             editTools->addAction(actionRedo);
             }
       else {
-            editTools->addAction(actionUndo);
             editTools->addAction(actionRedo);
+            editTools->addAction(actionUndo);
             }
       actionUndo->setEnabled(false);
       actionRedo->setEnabled(false);
@@ -117,9 +117,9 @@ PluginCreator::PluginCreator(QWidget* parent)
 
 QString PluginCreator::manualPath()
       {
-      QString path = mscoreGlobalShare;
-      path += "/manual/plugins/plugins.html";
-      return path;
+      QString _path = mscoreGlobalShare;
+      _path += "/manual/plugins/plugins.html";
+      return _path;
       }
 
 //---------------------------------------------------------
@@ -302,9 +302,9 @@ void PluginCreator::runClicked()
       component.setData(textEdit->toPlainText().toUtf8(), QUrl());
       QObject* obj = component.create();
       if (obj == 0) {
-            msg(tr("creating component failed\n"));
+            msg(tr("Creating component failed\n"));
             foreach(QQmlError e, component.errors())
-                  msg(QString("   line %1: %2\n").arg(e.line()).arg(e.description()));
+                  msg("   " + tr("line %1: %2\n").arg(e.line()).arg(e.description()));
             stop->setEnabled(false);
             return;
             }
@@ -313,11 +313,11 @@ void PluginCreator::runClicked()
       run->setEnabled(false);
 
       item = qobject_cast<QmlPlugin*>(obj);
-      msg(tr("Plugin Details:\n"));
-      msg(tr("  Menupath: ") + item->menuPath() + "\n");
-      msg(tr("  Version: ") + item->version() + "\n");
-      msg(tr("  Description: ") + item->description() + "\n");
-      if (item->requiresScore()) msg(tr("  Requires Score\n"));
+      msg(tr("Plugin Details:") + "\n");
+      msg("  " + tr("Menu Path:") + " " + item->menuPath() + "\n");
+      msg("  " + tr("Version:") + " " + item->version() + "\n");
+      msg("  " + tr("Description:") + " " + item->description() + "\n");
+      if (item->requiresScore()) msg("  " + tr("Requires Score\n"));
       if(MuseScoreCore::mscoreCore->currentScore() == nullptr && item->requiresScore() == true) {
             QMessageBox::information(0,
                   tr("MuseScore"),
@@ -509,7 +509,7 @@ void PluginCreator::newPlugin()
             else if (n == QMessageBox::Cancel)
                   return;
             }
-      path    = tr("untitled");
+      path    = tr("Untitled");
       created = true;
       QString s(
          "import QtQuick 2.0\n"

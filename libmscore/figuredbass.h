@@ -78,7 +78,7 @@ and it is edited (via the normalized text); so it is derived from Text.
 
 class FiguredBass;
 
-class FiguredBassItem : public Element {
+class FiguredBassItem final : public Element {
    public:
       enum class Modifier : char {
             NONE = 0,
@@ -200,9 +200,9 @@ class FiguredBassItem : public Element {
       QString           normalizedText() const;
       QString           displayText() const           { return _displayText;  }
 
-      virtual QVariant  getProperty(P_ID propertyId) const override;
-      virtual bool      setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant  propertyDefault(P_ID) const override;
+      virtual QVariant  getProperty(Pid propertyId) const override;
+      virtual bool      setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant  propertyDefault(Pid) const override;
       };
 
 //---------------------------------------------------------
@@ -229,9 +229,9 @@ struct FiguredBassFont {
 //   @P ticks   int   duration in ticks
 //---------------------------------------------------------
 
-class FiguredBass : public Text {
+class FiguredBass final : public TextBase {
       std::vector<FiguredBassItem*> items;      // the individual lines of the F.B.
-      QVector<qreal>    _lineLenghts;           // lengths of duration indicator lines (in raster units)
+      QVector<qreal>    _lineLengths;           // lengths of duration indicator lines (in raster units)
       bool              _onNote;                // true if this element is on a staff note | false if it is betweee notes
       int               _ticks;                 // the duration (used for cont. lines and for multiple F.B.
                                                 // under the same note)
@@ -254,7 +254,7 @@ class FiguredBass : public Text {
                               qreal * pSize, qreal * pLineHeight);
 
       // standard re-implemented virtual functions
-      virtual FiguredBass*    clone() const override     { return new FiguredBass(*this); }
+      virtual FiguredBass*    clone() const override   { return new FiguredBass(*this); }
       virtual ElementType   type() const override      { return ElementType::FIGURED_BASS; }
       virtual void      draw(QPainter* painter) const override;
       virtual void      endEdit(EditData&) override;
@@ -282,12 +282,12 @@ class FiguredBass : public Text {
 //                                                            list.append(&item);
 //                                                      return QDeclarativeListProperty<FiguredBassItem>(this, &items, qmlItemsAppend);
 //                                                }
-      qreal             lineLength(int idx) const     {   if(_lineLenghts.size() > idx)
-                                                            return _lineLenghts.at(idx);
+      qreal             lineLength(int idx) const     {   if(_lineLengths.size() > idx)
+                                                            return _lineLengths.at(idx);
                                                           return 0;   }
       qreal             printedLineLength() const     { return _printedLineLength; }
       bool              onNote() const          { return _onNote; }
-      int               numOfItems() const      { return items.size(); }
+      size_t            numOfItems() const      { return items.size(); }
       void              setOnNote(bool val)     { _onNote = val;  }
       Segment *         segment() const         { return (Segment*)(parent()); }
       int               ticks() const           { return _ticks;  }
@@ -296,9 +296,9 @@ class FiguredBass : public Text {
       qreal             additionalContLineX(qreal pagePosY) const;// returns the X coord (in page coord) of cont. line at pagePosY, if any
       FiguredBass *     nextFiguredBass() const;                  // returns next *adjacent* f.b. item, if any
 
-      virtual QVariant  getProperty(P_ID propertyId) const override;
-      virtual bool      setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant  propertyDefault(P_ID) const override;
+      virtual QVariant  getProperty(Pid propertyId) const override;
+      virtual bool      setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant  propertyDefault(Pid) const override;
 
       void appendItem(FiguredBassItem* item) {  items.push_back(item); }
       };

@@ -13,6 +13,7 @@
 #ifndef __XML_H__
 #define __XML_H__
 
+#include "connector.h"
 #include "stafftype.h"
 #include "interval.h"
 #include "element.h"
@@ -39,11 +40,31 @@ struct SpannerValues {
       };
 
 //---------------------------------------------------------
+//   TextStyleMap
+//---------------------------------------------------------
+
+struct TextStyleMap {
+      QString name;
+      Tid ss;
+      };
+
+//---------------------------------------------------------
+//   LinksIndexer
+//---------------------------------------------------------
+
+class LinksIndexer {
+      int _lastLocalIndex              { -1                    };
+      Location _lastLinkedElementLoc   { Location::absolute()  };
+
+   public:
+      int assignLocalIndex(const Location& mainElementInfo);
+      };
+
+//---------------------------------------------------------
 //   XmlReader
 //---------------------------------------------------------
 
 class XmlReader : public QXmlStreamReader {
-      Score* _score;
       QString docName;  // used for error reporting
 
       // Score read context (for read optimizations):
@@ -53,23 +74,38 @@ class XmlReader : public QXmlStreamReader {
       int _trackOffset      { 0       };
       bool _pasteMode       { false   };        // modifies read behaviour on paste operation
       Measure* _lastMeasure { 0       };
+      Measure* _currMeasure { 0       };
+      int _currMeasureIdx   { 0       };
       QHash<int, Beam*>    _beams;
       QHash<int, Tuplet*>  _tuplets;
 
       QList<SpannerValues> _spannerValues;
       QList<std::pair<int,Spanner*>> _spanner;
       QList<StaffType> _staffTypes;
+      QList<std::pair<Element*, QPointF>> _fixOffsets;
+
+      std::vector<std::unique_ptr<ConnectorInfoReader>> _connectors;
+      std::vector<std::unique_ptr<ConnectorInfoReader>> _pendingConnectors; // connectors that are pending to be updated and added to _connectors. That will happen when checkConnectors() is called.
 
       void htmlToString(int level, QString*);
       Interval _transpose;
-      QMap<int, LinkedElements*> _elinks;
+      QMap<int, LinkedElements*> _elinks; // for reading old files (< 3.01)
+      QMap<int, QList<QPair<LinkedElements*, Location>>> _staffLinkedElements; // one list per staff
+      LinksIndexer _linksIndexer;
       QMultiMap<int, int> _tracks;
 
+      QList<TextStyleMap> userTextStyles;
+
+      void addConnectorInfo(std::unique_ptr<ConnectorInfoReader>);
+      void removeConnector(const ConnectorInfoReader*); // Removes the whole ConnectorInfo chain from the connectors list.
+
    public:
-      XmlReader(Score* s, QFile* f) : QXmlStreamReader(f), _score(s), docName(f->fileName()) {}
-      XmlReader(Score* s, const QByteArray& d, const QString& st = QString()) : QXmlStreamReader(d), _score(s), docName(st)  {}
-      XmlReader(Score* s, QIODevice* d, const QString& st = QString()) : QXmlStreamReader(d), _score(s), docName(st) {}
-      XmlReader(Score* s, const QString& d, const QString& st = QString()) : QXmlStreamReader(d), _score(s), docName(st) {}
+      XmlReader(QFile* f) : QXmlStreamReader(f), docName(f->fileName()) {}
+      XmlReader(const QByteArray& d, const QString& st = QString()) : QXmlStreamReader(d), docName(st)  {}
+      XmlReader(QIODevice* d, const QString& st = QString()) : QXmlStreamReader(d), docName(st) {}
+      XmlReader(const QString& d, const QString& st = QString()) : QXmlStreamReader(d), docName(st) {}
+      XmlReader(const XmlReader&) = delete;
+      ~XmlReader();
 
       bool hasAccidental;                     // used for userAccidental backward compatibility
       void unknown();
@@ -104,12 +140,19 @@ class XmlReader : public QXmlStreamReader {
       void initTick(int val)       { _tick = val;       }
       void incTick(int val)        { _tick += val;      }
       void setTickOffset(int val)  { _tickOffset = val; }
+      Fraction rfrac() const;
+      Fraction afrac() const;
       int track() const            { return _track + _trackOffset;     }
       void setTrackOffset(int val) { _trackOffset = val;   }
       int trackOffset() const      { return _trackOffset;   }
       void setTrack(int val)       { _track = val;      }
       bool pasteMode() const       { return _pasteMode; }
       void setPasteMode(bool v)    { _pasteMode = v;    }
+
+      Location location(bool forceAbsFrac = false) const;
+      void fillLocation(Location&, bool forceAbsFrac = false) const;
+      void setLocation(const Location&); // sets a new reading point, taking into
+                                         // account its type (absolute or relative).
 
       void addBeam(Beam* s);
       Beam* findBeam(int id) const { return _beams.value(id);   }
@@ -120,23 +163,39 @@ class XmlReader : public QXmlStreamReader {
 
       void setLastMeasure(Measure* m) { _lastMeasure = m;    }
       Measure* lastMeasure() const    { return _lastMeasure; }
+      void setCurrentMeasure(Measure* m) { _currMeasure = m; }
+      Measure* currentMeasure() const { return _currMeasure; }
+      void setCurrentMeasureIndex(int idx)  { _currMeasureIdx = idx;  }
+      int currentMeasureIndex() const       { return _currMeasureIdx; }
 
       void removeSpanner(const Spanner*);
       void addSpanner(int id, Spanner*);
       Spanner* findSpanner(int id);
+
       int spannerId(const Spanner*);      // returns spanner id, allocates new one if none exists
 
       void addSpannerValues(const SpannerValues& sv) { _spannerValues.append(sv); }
       const SpannerValues* spannerValues(int id) const;
+
+      void addConnectorInfoLater(std::unique_ptr<ConnectorInfoReader> c) { _pendingConnectors.push_back(std::move(c)); } // add connector info to be checked after calling checkConnectors()
+      void checkConnectors();
+      void reconnectBrokenConnectors();
+
       QList<StaffType>& staffType()     { return _staffTypes; }
       Interval transpose() const        { return _transpose; }
       void setTransposeChromatic(int v) { _transpose.chromatic = v; }
       void setTransposeDiatonic(int v)  { _transpose.diatonic = v; }
 
+      LinkedElements* getLink(bool masterScore, const Location& l, int localIndexDiff);
+      void addLink(Staff* staff, LinkedElements* link);
       QMap<int, LinkedElements*>& linkIds() { return _elinks;     }
       QMultiMap<int, int>& tracks()         { return _tracks;     }
 
       void checkTuplets();
+      Tid addUserTextStyle(const QString& name);
+      Tid lookupUserTextStyle(const QString& name);
+
+      QList<std::pair<Element*, QPointF>>& fixOffsets() { return  _fixOffsets; }
       };
 
 //---------------------------------------------------------
@@ -160,8 +219,16 @@ class XmlWriter : public QTextStream {
       bool _clipboardmode = { false };   // used to modify write() behaviour
       bool _excerptmode   = { false };   // true when writing a part
       bool _writeOmr      = { true };    // false if writing into *.msc file
+      bool _writeTrack    = { false };
+      bool _writePosition = { false };
       int _tupletId       = { 1 };
       int _beamId         = { 1 };
+
+      LinksIndexer _linksIndexer;
+      QMap<int, int> _lidLocalIndices;
+
+      std::vector<std::pair<const ScoreElement*, QString>> _elements;
+      bool _recordElements = false;
 
       void putLevel();
 
@@ -171,6 +238,7 @@ class XmlWriter : public QTextStream {
 
       int spannerId() const         { return _spannerId; }
       int curTick() const           { return _curTick; }
+      Fraction afrac() const        { return Fraction::fromTicks(_curTick); }
       int curTrack() const          { return _curTrack; }
       int tickDiff() const          { return _tickDiff; }
       int trackDiff() const         { return _trackDiff; }
@@ -178,12 +246,16 @@ class XmlWriter : public QTextStream {
       bool clipboardmode() const    { return _clipboardmode; }
       bool excerptmode() const      { return _excerptmode;   }
       bool writeOmr() const         { return _writeOmr;   }
+      bool writeTrack() const       { return _writeTrack;    }
+      bool writePosition() const    { return _writePosition; }
       int nextTupletId()            { return _tupletId++;   }
       int nextBeamId()              { return _beamId++; }
 
       void setClipboardmode(bool v) { _clipboardmode = v; }
       void setExcerptmode(bool v)   { _excerptmode = v;   }
       void setWriteOmr(bool v)      { _writeOmr = v;      }
+      void setWriteTrack(bool v)    { _writeTrack= v;     }
+      void setWritePosition(bool v) { _writePosition = v; }
       void setTupletId(int v)       { _tupletId = v;      }
       void setBeamId(int v)         { _beamId = v;        }
       void setSpannerId(int v)      { _spannerId = v; }
@@ -198,6 +270,13 @@ class XmlWriter : public QTextStream {
       const Spanner* findSpanner(int id);
       int spannerId(const Spanner*);      // returns spanner id, allocates new one if none exists
 
+      int assignLocalIndex(const Location& mainElementLocation);
+      void setLidLocalIndex(int lid, int localIndex) { _lidLocalIndices.insert(lid, localIndex); }
+      int lidLocalIndex(int lid) const { return _lidLocalIndices[lid]; }
+
+      const std::vector<std::pair<const ScoreElement*, QString>>& elements() const { return _elements; }
+      void setRecordElements(bool record) { _recordElements = record; }
+
       void sTag(const char* name, Spatium sp) { XmlWriter::tag(name, QVariant(sp.val())); }
       void pTag(const char* name, PlaceText);
 
@@ -206,18 +285,23 @@ class XmlWriter : public QTextStream {
       void stag(const QString&);
       void etag();
 
+      void stag(const ScoreElement* se, const QString& attributes = QString());
+      void stag(const QString& name, const ScoreElement* se, const QString& attributes = QString());
+
       void tagE(const QString&);
       void tagE(const char* format, ...);
       void ntag(const char* name);
       void netag(const char* name);
 
-      void tag(P_ID id, void* data, void* defaultVal);
-      void tag(P_ID id, QVariant data, QVariant defaultData = QVariant());
+      void tag(Pid id, void* data, void* defaultVal);
+      void tag(Pid id, QVariant data, QVariant defaultData = QVariant());
       void tag(const char* name, QVariant data, QVariant defaultData = QVariant());
       void tag(const QString&, QVariant data);
       void tag(const char* name, const char* s)    { tag(name, QVariant(s)); }
       void tag(const char* name, const QString& s) { tag(name, QVariant(s)); }
       void tag(const char* name, const QWidget*);
+
+      void comment(const QString&);
 
       void writeXml(const QString&, QString s);
       void dump(int len, const unsigned char* p);

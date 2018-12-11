@@ -58,7 +58,7 @@ enum class PlayEventType : char    {
 //   @P stemDirection Direction       the stem slash of the chord (acciaccatura) if any (read only)
 //---------------------------------------------------------
 
-class Chord : public ChordRest {
+class Chord final : public ChordRest {
       std::vector<Note*>   _notes;       // sorted to decreasing line step
       LedgerLine*          _ledgerLines; // single linked list
 
@@ -80,9 +80,11 @@ class Chord : public ChordRest {
       qreal _spaceLw;
       qreal _spaceRw;
 
+      QVector<Articulation*> _articulations;
+
       virtual qreal upPos()   const;
       virtual qreal downPos() const;
-      virtual qreal centerX() const;
+      qreal centerX() const;
       void addLedgerLines();
       void processSiblings(std::function<void(Element*)> func) const;
 
@@ -159,6 +161,7 @@ class Chord : public ChordRest {
       virtual QPointF stemPos() const;          ///< page coordinates
       virtual QPointF stemPosBeam() const;      ///< page coordinates
       virtual qreal stemPosX() const;
+
       bool underBeam() const;
       Hook* hook() const                     { return _hook; }
 
@@ -177,7 +180,7 @@ class Chord : public ChordRest {
       void setNoteType(NoteType t)    { _noteType = t; }
       bool isGrace() const            { return _noteType != NoteType::NORMAL; }
       void toGraceAfter();
-      virtual void scanElements(void* data, void (*func)(void*, Element*), bool all=true);
+      virtual void scanElements(void* data, void (*func)(void*, Element*), bool all=true) override;
 
       virtual void setTrack(int val) override;
 
@@ -192,12 +195,20 @@ class Chord : public ChordRest {
       void setPlayEventType(PlayEventType v)        { _playEventType = v;    }
 
       TremoloChordType tremoloChordType() const;
-      QPointF layoutArticulation(Articulation*);
+
+      void layoutArticulations();
+      void layoutArticulations2();
+
+      QVector<Articulation*>& articulations()             { return _articulations; }
+      const QVector<Articulation*>& articulations() const { return _articulations; }
+      Articulation* hasArticulation(const Articulation*);
+      bool hasSingleArticulation() const                  { return _articulations.size() == 1; }
+
       virtual void crossMeasureSetup(bool on);
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
 
       virtual void reset();
 

@@ -23,10 +23,12 @@ class PalmMute;
 //   @@ PalmMuteSegment
 //---------------------------------------------------------
 
-class PalmMuteSegment : public TextLineBaseSegment {
+class PalmMuteSegment final : public TextLineBaseSegment {
+
+      virtual Sid getPropertyStyle(Pid) const override;
 
    public:
-      PalmMuteSegment(Score* s) : TextLineBaseSegment(s) {}
+      PalmMuteSegment(Spanner* sp, Score* s) : TextLineBaseSegment(sp, s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)  { }
       virtual ElementType type() const override       { return ElementType::PALM_MUTE_SEGMENT; }
       virtual PalmMuteSegment* clone() const override { return new PalmMuteSegment(*this);    }
       PalmMute* palmMute() const                      { return (PalmMute*)spanner();          }
@@ -39,7 +41,9 @@ class PalmMuteSegment : public TextLineBaseSegment {
 //   @@ PalmMute
 //---------------------------------------------------------
 
-class PalmMute : public TextLineBase {
+class PalmMute final : public TextLineBase {
+
+      virtual Sid getPropertyStyle(Pid) const override;
 
    protected:
       QPointF linePos(Grip, System**) const override;
@@ -49,10 +53,9 @@ class PalmMute : public TextLineBase {
       virtual PalmMute* clone() const override  { return new PalmMute(*this);   }
       virtual ElementType type() const override { return ElementType::PALM_MUTE; }
       virtual void read(XmlReader&) override;
+      virtual void write(XmlWriter& xml) const override;
       LineSegment* createLineSegment();
-      virtual void setYoff(qreal) override;
-      virtual QVariant propertyDefault(P_ID propertyId) const override;
-      virtual StyleIdx getPropertyStyle(P_ID) const override;
+      virtual QVariant propertyDefault(Pid propertyId) const override;
 
       friend class PalmMuteLine;
       };

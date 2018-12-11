@@ -24,7 +24,7 @@ namespace Ms {
 //   @P markerType  enum (Marker.CODA, .CODETTA, .FINE, .SEGNO, .TOCODA, .USER, .VARCODA, .VARSEGNO)
 //---------------------------------------------------------
 
-class Marker : public Text {
+class Marker final : public TextBase {
    public:
       enum class Type : char {
             SEGNO,
@@ -41,16 +41,16 @@ class Marker : public Text {
       Type _markerType;
       QString _label;               ///< referenced from Jump() element
 
-      Type markerType(const QString&) const;
-
    public:
       Marker(Score*);
+      Marker(Score*, Tid);
 
       void setMarkerType(Type t);
       Type markerType() const          { return _markerType; }
       QString markerTypeUserName() const;
+      Type markerType(const QString&) const;
 
-      virtual Marker* clone() const override      { return new Marker(*this); }
+      virtual Marker* clone() const override    { return new Marker(*this); }
       virtual ElementType type() const override { return ElementType::MARKER; }
 
       Measure* measure() const         { return (Measure*)parent(); }
@@ -65,12 +65,10 @@ class Marker : public Text {
       void undoSetMarkerType(Type t);
 
       virtual void styleChanged() override;
-      virtual bool systemFlag() const override  { return true;        }
-      virtual void adjustReadPos() override;
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
 
       virtual Element* nextSegmentElement() override;
       virtual Element* prevSegmentElement() override;

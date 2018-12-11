@@ -90,10 +90,8 @@ ClefType ClefInfo::tag2type(const QString& s)
 //---------------------------------------------------------
 
 Clef::Clef(Score* s)
-  : Element(s)
+  : Element(s, ElementFlag::ON_STAFF)
       {
-      setFlags(ElementFlag::SELECTABLE | ElementFlag::ON_STAFF);
-
       _showCourtesy               = true;
       _small                      = false;
       _clefTypes._concertClef     = ClefType::INVALID;
@@ -116,7 +114,7 @@ qreal Clef::mag() const
       {
       qreal mag = staff() ? staff()->mag(tick()) : 1.0;
       if (_small)
-            mag *= score()->styleD(StyleIdx::smallClefMag);
+            mag *= score()->styleD(Sid::smallClefMag);
       return mag;
       }
 
@@ -135,7 +133,7 @@ void Clef::layout()
       // check clef visibility and type compatibility
       if (clefSeg && staff()) {
             int tick             = clefSeg->tick();
-            StaffType* staffType = staff()->staffType(tick);
+            const StaffType* staffType = staff()->constStaffType(tick);
             bool show            = staffType->genClef();        // check staff type allows clef display
 
             // check clef is compatible with staff type group:
@@ -148,6 +146,14 @@ void Clef::layout()
                         _clefTypes = staff()->clefType(0);
                   }
 
+            Measure* meas = clefSeg->measure();
+            if (meas && meas->system() && !score()->lineMode()) {
+                  auto ml = meas->system()->measures();
+                  bool found = (std::find(ml.begin(), ml.end(), meas) != ml.end());
+                  bool courtesy = (tick == meas->endTick() && (meas == meas->system()->lastMeasure() || !found));
+                  if (courtesy && (!showCourtesy() || !score()->styleB(Sid::genCourtesyClef) || meas->isFinalMeasureOfSection()))
+                        show = false;
+                  }
             // if clef not to show or not compatible with staff group
             if (!show) {
                   setbbox(QRectF());
@@ -218,7 +224,7 @@ void Clef::layout()
 
 void Clef::draw(QPainter* painter) const
       {
-      if (symId == SymId::noSym || (staff() && !staff()->staffType(tick())->genClef()))
+      if (symId == SymId::noSym || (staff() && !const_cast<const Staff*>(staff())->staffType(tick())->genClef()))
             return;
       painter->setPen(curColor());
       drawSymbol(symId, painter);
@@ -230,8 +236,8 @@ void Clef::draw(QPainter* painter) const
 
 bool Clef::acceptDrop(EditData& data) const
       {
-      return (data.element->type() == ElementType::CLEF
-         || (/*!generated() &&*/ data.element->type() == ElementType::AMBITUS) );
+      return (data.dropElement->type() == ElementType::CLEF
+         || (/*!generated() &&*/ data.dropElement->type() == ElementType::AMBITUS) );
       }
 
 //---------------------------------------------------------
@@ -240,7 +246,7 @@ bool Clef::acceptDrop(EditData& data) const
 
 Element* Clef::drop(EditData& data)
       {
-      Element* e = data.element;
+      Element* e = data.dropElement;
       Clef* c = 0;
       if (e->isClef()) {
             Clef* clef = toClef(e);
@@ -304,7 +310,7 @@ void Clef::read(XmlReader& e)
 
 void Clef::write(XmlWriter& xml) const
       {
-      xml.stag(name());
+      xml.stag(this);
       if (_clefTypes._concertClef != ClefType::INVALID)
             xml.tag("concertClefType", ClefInfo::tag(_clefTypes._concertClef));
       if (_clefTypes._transposingClef != ClefType::INVALID)
@@ -421,18 +427,49 @@ void Clef::spatiumChanged(qreal oldValue, qreal newValue)
 
 void Clef::undoSetShowCourtesy(bool v)
       {
-      undoChangeProperty(P_ID::SHOW_COURTESY, v);
+      undoChangeProperty(Pid::SHOW_COURTESY, v);
+      }
+
+//---------------------------------------------------------
+//   otherClef
+//    try to locate the 'other clef' of a courtesy / main pair
+//---------------------------------------------------------
+
+Clef* Clef::otherClef()
+      {
+      // if not in a clef-segment-measure hierarchy, do nothing
+      if (!parent() || !parent()->isSegment())
+            return nullptr;
+      Segment* segm = toSegment(parent());
+      int segmTick = segm->tick();
+      if (!segm->parent() || !segm->parent()->isMeasure())
+            return nullptr;
+      Measure* meas = toMeasure(segm->parent());
+      Measure* otherMeas = nullptr;
+      Segment* otherSegm = nullptr;
+      if (segmTick == meas->tick())                         // if clef segm is measure-initial
+            otherMeas = meas->prevMeasure();                // look for a previous measure
+      else if (segmTick == meas->tick() + meas->ticks())    // if clef segm is measure-final
+            otherMeas = meas->nextMeasure();                // look for a next measure
+      if (!otherMeas)
+            return nullptr;
+      // look for a clef segment in the 'other' measure at the same tick of this clef segment
+      otherSegm = otherMeas->findSegment(SegmentType::Clef | SegmentType::HeaderClef, segmTick);
+      if (!otherSegm)
+            return nullptr;
+      // if any 'other' segment found, look for a clef in the same track as this
+      return toClef(otherSegm->element(track()));
       }
 
 //---------------------------------------------------------
 //   getProperty
 //---------------------------------------------------------
 
-QVariant Clef::getProperty(P_ID propertyId) const
+QVariant Clef::getProperty(Pid propertyId) const
       {
       switch(propertyId) {
-            case P_ID::SHOW_COURTESY: return showCourtesy();
-            case P_ID::SMALL:         return small();
+            case Pid::SHOW_COURTESY: return showCourtesy();
+            case Pid::SMALL:         return small();
             default:
                   return Element::getProperty(propertyId);
             }
@@ -442,14 +479,15 @@ QVariant Clef::getProperty(P_ID propertyId) const
 //   setProperty
 //---------------------------------------------------------
 
-bool Clef::setProperty(P_ID propertyId, const QVariant& v)
+bool Clef::setProperty(Pid propertyId, const QVariant& v)
       {
       switch(propertyId) {
-            case P_ID::SHOW_COURTESY: _showCourtesy = v.toBool(); break;
-            case P_ID::SMALL:         setSmall(v.toBool()); break;
+            case Pid::SHOW_COURTESY: _showCourtesy = v.toBool(); break;
+            case Pid::SMALL:         setSmall(v.toBool()); break;
             default:
                   return Element::setProperty(propertyId, v);
             }
+      triggerLayout();
       return true;
       }
 
@@ -457,11 +495,11 @@ bool Clef::setProperty(P_ID propertyId, const QVariant& v)
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant Clef::propertyDefault(P_ID id) const
+QVariant Clef::propertyDefault(Pid id) const
       {
       switch(id) {
-            case P_ID::SHOW_COURTESY: return true;
-            case P_ID::SMALL:         return false;
+            case Pid::SHOW_COURTESY: return true;
+            case Pid::SMALL:         return false;
             default:              return Element::propertyDefault(id);
             }
       }

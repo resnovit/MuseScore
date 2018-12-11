@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Linux Music Score Editor
-//  $Id: timeline.h 4785 2011-09-14 10:06:35Z wschweer $
 //
 //  Copyright (C) 2002-2009 Werner Schweer and others
 //
@@ -157,8 +156,8 @@ class Timeline : public QGraphicsView {
       void setMetaData(QGraphicsItem* gi, int staff, ElementType et, Measure* m, bool full_measure, Element* e, QGraphicsItem* pair_item = nullptr, Segment* seg = nullptr);
       unsigned int getMetaRow(QString target_text);
 
-      int global_measure_number;
-      int global_z_value = 0;
+      int global_measure_number { 0 };
+      int global_z_value        { 0 };
 
       //True if meta value was last clicked
       bool meta_value = false;
@@ -173,9 +172,12 @@ class Timeline : public QGraphicsView {
       unsigned int correctMetaRow(unsigned int row);
       int correctStave(int stave);
 
+      QList<Part*> getParts();
+
    private slots:
       void handle_scroll(int value);
       void updateView();
+      void objectDestroyed(QObject*);
 
    public slots:
       void changeSelection(SelState);
@@ -212,7 +214,7 @@ class Timeline : public QGraphicsView {
       unsigned int nmetas();
 
       bool collapsed() { return collapsed_meta; }
-      void setCollapsed(bool state) { collapsed_meta = state; }
+      void setCollapsed(bool st) { collapsed_meta = st; }
 
       Staff* numToStaff(int staff);
       void toggleShow(int staff);

@@ -1,7 +1,6 @@
 //=============================================================================
 //  MusE Score
 //  Linux Music Score Editor
-//  $Id: measureproperties.cpp 5628 2012-05-15 07:46:43Z wschweer $
 //
 //  Copyright (C) 2007 Werner Schweer and others
 //
@@ -252,12 +251,12 @@ void MeasureProperties::apply()
                   score->undo(new ChangeMStaffProperties(m, staffIdx, v, s));
             }
 
-      m->undoChangeProperty(P_ID::REPEAT_COUNT, repeatCount());
-      m->undoChangeProperty(P_ID::BREAK_MMR, breakMultiMeasureRest->isChecked());
-      m->undoChangeProperty(P_ID::USER_STRETCH, layoutStretch->value());
-      m->undoChangeProperty(P_ID::MEASURE_NUMBER_MODE, measureNumberMode->currentIndex());
-      m->undoChangeProperty(P_ID::NO_OFFSET, measureNumberOffset->value());
-      m->undoChangeProperty(P_ID::IRREGULAR, isIrregular());
+      m->undoChangeProperty(Pid::REPEAT_COUNT, repeatCount());
+      m->undoChangeProperty(Pid::BREAK_MMR, breakMultiMeasureRest->isChecked());
+      m->undoChangeProperty(Pid::USER_STRETCH, layoutStretch->value());
+      m->undoChangeProperty(Pid::MEASURE_NUMBER_MODE, measureNumberMode->currentIndex());
+      m->undoChangeProperty(Pid::NO_OFFSET, measureNumberOffset->value());
+      m->undoChangeProperty(Pid::IRREGULAR, isIrregular());
 
       if (m->len() != len()) {
             ScoreRange range;
@@ -268,7 +267,7 @@ void MeasureProperties::apply()
             else if (!MScore::noGui) {
                   QMessageBox::warning(0,
                      QT_TRANSLATE_NOOP("MeasureProperties", "MuseScore"),
-                     QT_TRANSLATE_NOOP("MeasureProperties", "cannot change measure length:\n"
+                     QT_TRANSLATE_NOOP("MeasureProperties", "Cannot change measure length:\n"
                      "tuplet would cross measure")
                      );
                   }

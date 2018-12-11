@@ -97,7 +97,7 @@ qDebug("checkScore: remove empty ChordRest segment");
             int tick  = 0;
             Staff* st = staff(staffIdx);
             for (Segment* s = firstMeasure()->first(SegmentType::ChordRest); s; s = s->next1(SegmentType::ChordRest)) {
-                  ChordRest* cr = static_cast<ChordRest*>(s->element(track));
+                  ChordRest* cr = toChordRest(s->element(track));
                   if (!cr)
                         continue;
                   if (s->tick() != tick) {
@@ -197,7 +197,7 @@ bool Score::sanityCheck(const QString& name)
                               }
                         }
                   if (voices[0] != mLen) {
-                        QString msg = QObject::tr("Measure %1 Staff %2 incomplete. Expected: %3; Found: %4").arg(mNumber).arg( staffIdx+1).arg(mLen.print()).arg(voices[0].print());
+                        QString msg = QObject::tr("Measure %1, staff %2 incomplete. Expected: %3; Found: %4").arg(mNumber).arg( staffIdx+1).arg(mLen.print()).arg(voices[0].print());
                         qDebug() << msg;
                         error += QString("%1\n").arg(msg);
 #ifndef NDEBUG
@@ -265,7 +265,7 @@ bool Score::checkKeys()
                   if (s) {
                         Element* element = s->element(i * VOICES);
                         if (element)
-                              k = static_cast<KeySig*>(element)->key();
+                              k = toKeySig(element)->key();
                         }
                   if (staff(i)->key(m->tick()) != k) {
                         qDebug("measure %d (tick %d) : key %d, map %d", m->no(), m->tick(), int(k),
@@ -321,7 +321,9 @@ bool Score::checkClefs()
 
 void Measure::fillGap(const Fraction& pos, const Fraction& len, int track, const Fraction& stretch)
       {
-//      qDebug("measure %6d pos %d, len %d, track %d", tick(), pos.ticks(), len.ticks(), track);
+      qDebug("measure %6d pos %d, len %d/%d, stretch %d/%d track %d",
+         tick(), pos.ticks(), len.numerator(), len.denominator(), stretch.numerator(), stretch.denominator(),
+         track);
       TDuration d;
       d.setVal(len.ticks());
       if (d.isValid()) {
@@ -362,7 +364,7 @@ void Measure::checkMeasure(int staffIdx)
                         continue;
 
                   ChordRest* cr = toChordRest(e);
-                  currentPos    = seg->fpos() * stretch;
+                  currentPos    = seg->rfrac() * stretch;
 
                   if (currentPos < expectedPos)
                         qDebug("overlap measure %6d at %d-%d track %d", tick(), (currentPos/stretch).ticks(), (expectedPos/stretch).ticks(), track);

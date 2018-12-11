@@ -34,6 +34,7 @@
 #include "tremolo.h"
 #include "slur.h"
 #include "articulation.h"
+#include "sig.h"
 
 namespace Ms {
 
@@ -45,7 +46,7 @@ static void transposeChord(Chord* c, Interval srcTranspose, int tick)
       {
       // set note track
       // check if staffMove moves a note to a
-      // nonexistant staff
+      // nonexistent staff
       //
       int track  = c->track();
       int nn     = (track / VOICES) + c->staffMove();
@@ -80,6 +81,8 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
       {
       Q_ASSERT(dst->segmentType() == SegmentType::ChordRest);
       QList<Chord*> graceNotes;
+      Beam* startingBeam = nullptr;
+      Tuplet* tuplet = nullptr;
       int dstTick = dst->tick();
       bool pasted = false;
       int tickLen = 0;
@@ -103,8 +106,6 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                 tickLen       = e.intAttribute("len", 0);
             int staffStart    = e.intAttribute("staff", 0);
                 staves        = e.intAttribute("staves", 0);
-            int voiceOffset[VOICES];
-            std::fill(voiceOffset,voiceOffset+VOICES,-1);
 
             e.setTickOffset(dstTick - tickStart);
             e.initTick(0);
@@ -129,8 +130,6 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                         break;
                         }
 
-                  e.tuplets().clear();
-                  bool makeGap  = true;
                   while (e.readNextStartElement()) {
                         pasted = true;
                         const QStringRef& tag(e.name());
@@ -139,43 +138,71 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                               e.setTransposeChromatic(e.readInt());
                         else if (tag == "transposeDiatonic")
                               e.setTransposeDiatonic(e.readInt());
-                        else if (tag == "voice") {
-                              int voiceId = e.attribute("id", "-1").toInt();
-                              Q_ASSERT(voiceId >= 0 && voiceId < VOICES);
-                              voiceOffset[voiceId] = e.readInt();
-                              }
-                        else if (tag == "move" || tag == "tick") {
-                              int tick = tag == "move" ? e.readFraction().ticks() : e.readInt();
-                              e.initTick(tick);
-                              int shift = tick - tickStart;
-                              if (makeGap && !makeGap1(dstTick, dstStaffIdx, Fraction::fromTicks(tickLen), voiceOffset)) {
-                                    qDebug("cannot make gap in staff %d at tick %d", dstStaffIdx, dstTick + shift);
+                        else if (tag == "voiceOffset") {
+                              int voiceOffset[VOICES];
+                              std::fill(voiceOffset, voiceOffset+VOICES, -1);
+                              while (e.readNextStartElement()) {
+                                    if (e.name() != "voice")
+                                          e.unknown();
+                                    int voiceId = e.attribute("id", "-1").toInt();
+                                    Q_ASSERT(voiceId >= 0 && voiceId < VOICES);
+                                    voiceOffset[voiceId] = e.readInt();
+                                    }
+                              e.readNext();
+                              if (!makeGap1(dstTick, dstStaffIdx, Fraction::fromTicks(tickLen), voiceOffset)) {
+                                    qDebug("cannot make gap in staff %d at tick %d", dstStaffIdx, dstTick);
                                     done = true; // break main loop, cannot make gap
                                     break;
                                     }
-                              makeGap = false; // create gap only once per staff
+                              }
+                        else if (tag == "location") {
+                              Location loc = Location::relative();
+                              loc.read(e);
+                              e.setLocation(loc);
                               }
                         else if (tag == "Tuplet") {
-                              Tuplet* tuplet = new Tuplet(this);
-                              tuplet->setTrack(e.track());
-                              tuplet->read(e);
+                              Tuplet* oldTuplet = tuplet;
                               int tick = e.tick();
                               // no paste into local time signature
                               if (staff(dstStaffIdx)->isLocalTimeSignature(tick)) {
                                     MScore::setError(DEST_LOCAL_TIME_SIGNATURE);
+                                    if (oldTuplet && oldTuplet->elements().empty())
+                                          delete oldTuplet;
                                     return false;
                                     }
+                              tuplet = new Tuplet(this);
+                              tuplet->setTrack(e.track());
+                              tuplet->read(e);
                               Measure* measure = tick2measure(tick);
                               tuplet->setParent(measure);
                               tuplet->setTick(tick);
-                              int ticks = tuplet->actualTicks();
-                              int rticks = measure->endTick() - tick;
-                              if (rticks < ticks) {
+                              if (tuplet->rfrac() + tuplet->duration() > measure->len()) {
                                     delete tuplet;
+                                    if (oldTuplet && oldTuplet->elements().empty())
+                                          delete oldTuplet;
                                     MScore::setError(TUPLET_CROSSES_BAR);
                                     return false;
                                     }
-                              e.addTuplet(tuplet);
+                              if (oldTuplet)
+                                    tuplet->readAddTuplet(oldTuplet);
+                              }
+                        else if (tag == "endTuplet") {
+                              if (!tuplet) {
+                                    qDebug("Score::pasteStaff: encountered <endTuplet/> when no tuplet was started");
+                                    e.skipCurrentElement();
+                                    continue;
+                                    }
+                              Tuplet* oldTuplet = tuplet;
+                              tuplet = tuplet->tuplet();
+                              if (oldTuplet->elements().empty()) {
+                                    qDebug("Score::pasteStaff: ended tuplet is empty");
+                                    if (tuplet)
+                                          tuplet->remove(oldTuplet);
+                                    delete oldTuplet;
+                                    }
+                              else
+                                    oldTuplet->sortElements();
+                              e.readNext();
                               }
                         else if (tag == "Chord" || tag == "Rest" || tag == "RepeatMeasure") {
                               ChordRest* cr = toChordRest(Element::name2Element(tag, this));
@@ -188,6 +215,12 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                                     MScore::setError(DEST_LOCAL_TIME_SIGNATURE);
                                     return false;
                                     }
+                              if (startingBeam) {
+                                    startingBeam->add(cr); // also calls cr->setBeam(startingBeam)
+                                    startingBeam = nullptr;
+                                    }
+                              if (tuplet)
+                                    cr->readAddTuplet(tuplet);
                               if (cr->isGrace())
                                     graceNotes.push_back(toChord(cr));
                               else {
@@ -260,47 +293,8 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                                     pasteChordRest(cr, tick, e.transpose());
                                     }
                               }
-                        else if (tag == "HairPin"
-                           || tag == "Pedal"
-                           || tag == "Ottava"
-                           || tag == "Trill"
-                           || tag == "TextLine"
-                           || tag == "Volta") {
-                              Spanner* sp = static_cast<Spanner*>(Element::name2Element(tag, this));
-                              sp->setAnchor(Spanner::Anchor::SEGMENT);
-                              sp->read(e);
-                              sp->setTrack(e.track());
-                              sp->setTrack2(e.track());
-                              sp->setTick(e.tick());
-                              addSpanner(sp);
-                              }
-                        else if (tag == "Slur") {
-                              Slur* sp = new Slur(this);
-                              sp->read(e);
-                              sp->setTrack(e.track());
-                              sp->setTick(e.tick());
-                              // check if we saw endSpanner / stop element already
-                              int id = e.spannerId(sp);
-                              const SpannerValues* sv = e.spannerValues(id);
-                              if (sv) {
-                                    sp->setTick2(sv->tick2);
-                                    sp->setTrack2(sv->track2);
-                                    }
-                              undoAddElement(sp);
-                              }
-                        else if (tag == "endSpanner") {
-                              int id = e.intAttribute("id");
-                              Spanner* spanner = e.findSpanner(id);
-                              if (spanner) {
-                                    // e.spanner().removeOne(spanner);
-                                    spanner->setTick2(e.tick());
-                                    removeSpanner(spanner);
-                                    undoAddElement(spanner);
-                                    if (spanner->isOttava())
-                                          spanner->staff()->updateOttava();
-                                    }
-                              e.readNext();
-                              }
+                        else if (tag == "Spanner")
+                              Spanner::readSpanner(e, this, e.track());
                         else if (tag == "Harmony") {
                               Harmony* harmony = new Harmony(this);
                               harmony->setTrack(e.track());
@@ -309,7 +303,7 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                               // transpose
                               Part* partDest = staff(e.track() / VOICES)->part();
                               Interval interval = partDest->instrument(e.tick())->transpose();
-                              if (!styleB(StyleIdx::concertPitch) && !interval.isZero()) {
+                              if (!styleB(Sid::concertPitch) && !interval.isZero()) {
                                     interval.flip();
                                     int rootTpc = transposeTpc(harmony->rootTpc(), interval, true);
                                     int baseTpc = transposeTpc(harmony->baseTpc(), interval, true);
@@ -319,16 +313,8 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                               int tick = e.tick();
                               Measure* m = tick2measure(tick);
                               Segment* seg = m->undoGetSegment(SegmentType::ChordRest, tick);
-                              if (seg->findAnnotationOrElement(ElementType::HARMONY, e.track(), e.track())) {
-                                    QList<Element*> elements;
-                                    foreach (Element* el, seg->annotations()) {
-                                          if (el->isHarmony() && el->track() == e.track()) {
-                                                elements.append(el);
-                                                }
-                                          }
-                                    foreach (Element* el, elements)
-                                          undoRemoveElement(el);
-                                    }
+                              for (Element* el : seg->findAnnotations(ElementType::HARMONY, e.track(), e.track()))
+                                    undoRemoveElement(el);
                               harmony->setParent(seg);
                               undoAddElement(harmony);
                               }
@@ -343,6 +329,7 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                            || tag == "StaffText"
                            || tag == "TempoText"
                            || tag == "FiguredBass"
+                           || tag == "Fermata"
                            ) {
                               Element* el = Element::name2Element(tag, this);
                               el->setTrack(e.track());      // a valid track might be necessary for el->read() to work
@@ -386,7 +373,11 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                               beam->setTrack(e.track());
                               beam->read(e);
                               beam->setParent(0);
-                              e.addBeam(beam);
+                              if (startingBeam) {
+                                    qDebug("The read beam was not used");
+                                    delete startingBeam;
+                                    }
+                              startingBeam = beam;
                               }
                         else if (tag == "BarLine") {
                               e.skipCurrentElement();    // ignore bar line
@@ -397,11 +388,18 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                               }
                         }
 
-                  for (Tuplet* tuplet : e.tuplets()) {
-                        Q_ASSERT(!tuplet->elements().empty());
-                        Measure* measure = tick2measure(tuplet->tick());
-                        tuplet->setParent(measure);
-                        tuplet->sortElements();
+                  e.checkConnectors();
+                  if (startingBeam) {
+                        qDebug("The read beam was not used");
+                        delete startingBeam;
+                        }
+                  if (tuplet) {
+                        qDebug("<endTuplet/> not found");
+                        if (tuplet->elements().empty()) {
+                              if (tuplet->tuplet())
+                                    tuplet->tuplet()->remove(tuplet);
+                              delete tuplet;
+                              }
                         }
                   }
             }
@@ -409,35 +407,31 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
             s->connectTies();
 
       if (pasted) {                       //select only if we pasted something
-//TODO?            if (styleB(StyleIdx::createMultiMeasureRests))
-//                  createMMRests();
-            Segment* s1 = tick2segmentMM(dstTick);
-            Segment* s2 = tick2segmentMM(dstTick + tickLen);
             int endStaff = dstStaff + staves;
             if (endStaff > nstaves())
                   endStaff = nstaves();
             //check and add truly invisible rests insted of gaps
             //TODO: look if this could be done different
-            Measure* dstM = tick2measureMM(dstTick);
-            Measure* endM = tick2measureMM(dstTick + tickLen);
+            Measure* dstM = tick2measure(dstTick);
+            Measure* endM = tick2measure(dstTick + tickLen);
             for (int i = dstStaff; i < endStaff; i++) {
-                  for (Measure* m = dstM; m && m != endM->nextMeasureMM(); m = m->nextMeasureMM())
+                  for (Measure* m = dstM; m && m != endM->nextMeasure(); m = m->nextMeasure())
                         m->checkMeasure(i);
                   }
-            _selection.setRange(s1, s2, dstStaff, endStaff);
-            _selection.updateSelectedElements();
+            _selection.setRangeTicks(dstTick, dstTick + tickLen, dstStaff, endStaff);
 
             //finding the first element that has a track
             //the canvas position will be set to this element
-            Element* e = 0;
-            Segment* s = s1;
+            Element* el = 0;
+            Segment* s = tick2segmentMM(dstTick);
+            Segment* s2 = tick2segmentMM(dstTick + tickLen);
             bool found = false;
             if (s2)
                   s2 = s2->next1MM();
             while (!found && s != s2) {
                   for (int i = dstStaff * VOICES; i < (endStaff + 1) * VOICES; i++) {
-                        e = s->element(i);
-                        if (e) {
+                        el = s->element(i);
+                        if (el) {
                               found = true;
                               break;
                               }
@@ -446,11 +440,52 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff)
                   }
 
             for (MuseScoreView* v : viewer)
-                  v->adjustCanvasPosition(e, false);
+                  v->adjustCanvasPosition(el, false);
             if (!selection().isRange())
                   _selection.setState(SelState::RANGE);
             }
       return true;
+      }
+
+//---------------------------------------------------------
+//   Score::readAddConnector
+//---------------------------------------------------------
+
+void Score::readAddConnector(ConnectorInfoReader* info, bool pasteMode)
+      {
+      if (!pasteMode) {
+            // How did we get there?
+            qDebug("Score::readAddConnector is called not in paste mode.");
+            return;
+            }
+      const ElementType type = info->type();
+      switch(type) {
+            case ElementType::HAIRPIN:
+            case ElementType::PEDAL:
+            case ElementType::OTTAVA:
+            case ElementType::TRILL:
+            case ElementType::TEXTLINE:
+            case ElementType::VOLTA:
+                  {
+                  Spanner* sp = toSpanner(info->connector());
+                  const Location& l = info->location();
+                  if (info->isStart()) {
+                        sp->setAnchor(Spanner::Anchor::SEGMENT);
+                        sp->setTrack(l.track());
+                        sp->setTrack2(l.track());
+                        sp->setTick(l.frac().ticks());
+                        }
+                  else if (info->isEnd()) {
+                        sp->setTick2(l.frac().ticks());
+                        undoAddElement(sp);
+                        if (sp->isOttava())
+                              sp->staff()->updateOttava();
+                        }
+                  }
+                  break;
+            default:
+                  break;
+            }
       }
 
 //---------------------------------------------------------
@@ -482,7 +517,7 @@ void Score::pasteChordRest(ChordRest* cr, int tick, const Interval& srcTranspose
       // we have already disallowed a tuplet from crossing the barline, so there is no problem here
       // but due to rounding, it might appear from actualTicks() that the last note is too long by a couple of ticks
 
-      if (!isGrace && !cr->tuplet() && (tick + cr->actualTicks() > measureEnd || convertMeasureRest)) {
+      if (!isGrace && !cr->tuplet() && (tick + cr->actualTicks() > measureEnd || (cr->durationTypeTicks() != cr->actualTicks()) || convertMeasureRest)) {
             if (cr->isChord()) {
                   // split Chord
                   Chord* c = toChord(cr);
@@ -495,7 +530,7 @@ void Score::pasteChordRest(ChordRest* cr, int tick, const Interval& srcTranspose
                               c2->removeMarkings(true);
                         int mlen = measure->tick() + measure->ticks() - tick;
                         int len = mlen > rest ? rest : mlen;
-                        std::vector<TDuration> dl = toDurationList(Fraction::fromTicks(len), true);
+                        std::vector<TDuration> dl = toRhythmicDurationList(Fraction::fromTicks(len), false, tick - measure->tick(), sigmap()->timesig(tick).nominal(), measure, MAX_DOTS);
                         TDuration d = dl[0];
                         c2->setDurationType(d);
                         c2->setDuration(d.fraction());
@@ -535,12 +570,12 @@ void Score::pasteChordRest(ChordRest* cr, int tick, const Interval& srcTranspose
                         measure       = tick2measure(tick);
                         Fraction mlen = Fraction::fromTicks(measure->tick() + measure->ticks() - tick);
                         Fraction len  = rest > mlen ? mlen : rest;
-                        std::vector<TDuration> dl = toDurationList(len, false);
+                        std::vector<TDuration> dl = toRhythmicDurationList(len, true, tick - measure->tick(), sigmap()->timesig(tick).nominal(), measure, MAX_DOTS);
                         TDuration d = dl[0];
-                        r2->setDuration(d.fraction());
                         r2->setDurationType(d);
+                        r2->setDuration(d.isMeasure() ? measure->len() : d.fraction());
                         undoAddCR(r2, measure, tick);
-                        rest -= d.fraction();
+                        rest -= r2->duration();
                         tick += r2->actualTicks();
                         firstpart = false;
                         }
@@ -654,7 +689,7 @@ void Score::pasteSymbols(XmlReader& e, ChordRest* dst)
                                     // transpose
                                     Part* partDest = staff(track2staff(destTrack))->part();
                                     Interval interval = partDest->instrument(destTick)->transpose();
-                                    if (!styleB(StyleIdx::concertPitch) && !interval.isZero()) {
+                                    if (!styleB(Sid::concertPitch) && !interval.isZero()) {
                                           interval.flip();
                                           int rootTpc = transposeTpc(el->rootTpc(), interval, true);
                                           int baseTpc = transposeTpc(el->baseTpc(), interval, true);
@@ -718,15 +753,15 @@ void Score::pasteSymbols(XmlReader& e, ChordRest* dst)
                                     if (!el->onNote()) {
                                           FiguredBass* onNoteFB = nullptr;
                                           Segment*     prevSegm = currSegm;
-                                          bool         done = false;
+                                          bool         done1    = false;
                                           while (prevSegm) {
-                                                if (done)
+                                                if (done1)
                                                       break;
                                                 prevSegm = prevSegm->prev1(SegmentType::ChordRest);
                                                 // if there is a ChordRest in the dest. track
                                                 // this segment is a (potential) f.b. location
                                                 if (prevSegm->element(destTrack) != nullptr) {
-                                                      done = true;
+                                                      done1 = true;
                                                       }
                                                 // in any case, look for a f.b. in annotations:
                                                 // if there is a f.b. element in the right track,
@@ -734,7 +769,7 @@ void Score::pasteSymbols(XmlReader& e, ChordRest* dst)
                                                 foreach (Element* a, prevSegm->annotations()) {
                                                       if (a->isFiguredBass() && a->track() == destTrack) {
                                                             onNoteFB = toFiguredBass(a);
-                                                            done = true;
+                                                            done1 = true;
                                                             }
                                                       }
                                                 }
@@ -744,17 +779,17 @@ void Score::pasteSymbols(XmlReader& e, ChordRest* dst)
                                                 continue;
                                                 }
                                           // by default, split on-note duration in half: half on-note and half off-note
-                                          int totTicks = currSegm->tick() - prevSegm->tick();
-                                          int destTick = prevSegm->tick() + totTicks / 2;
-                                          ticks        = totTicks / 2;
+                                          int totTicks  = currSegm->tick() - prevSegm->tick();
+                                          int destTick1 = prevSegm->tick() + totTicks / 2;
+                                          ticks         = totTicks / 2;
                                           if (onNoteFB)
                                                 onNoteFB->setTicks(totTicks / 2);
                                           // look for a segment at this tick; if none, create one
                                           Segment * nextSegm = prevSegm;
-                                          while (nextSegm && nextSegm->tick() < destTick)
+                                          while (nextSegm && nextSegm->tick() < destTick1)
                                                 nextSegm = nextSegm->next1(SegmentType::ChordRest);
-                                          if (!nextSegm || nextSegm->tick() > destTick) {      // no ChordRest segm at this tick
-                                                nextSegm = new Segment(prevSegm->measure(), SegmentType::ChordRest, destTick);
+                                          if (!nextSegm || nextSegm->tick() > destTick1) {      // no ChordRest segm at this tick
+                                                nextSegm = new Segment(prevSegm->measure(), SegmentType::ChordRest, destTick1);
                                                 if (!nextSegm) {
                                                       qDebug("PasteSymbols: can't find or create destination segment for FiguredBass");
                                                       delete el;
@@ -830,10 +865,12 @@ void Score::cmdPaste(const QMimeData* ms, MuseScoreView* view)
             }
       if ((_selection.isSingle() || _selection.isList()) && ms->hasFormat(mimeSymbolFormat)) {
             QByteArray data(ms->data(mimeSymbolFormat));
-            XmlReader e(this, data);
+
+            XmlReader e(data);
             QPointF dragOffset;
             Fraction duration(1, 4);
             ElementType type = Element::readType(e, &dragOffset, &duration);
+            e.setPasteMode(true);
 
             QList<Element*> els;
             if (_selection.isSingle())
@@ -841,27 +878,29 @@ void Score::cmdPaste(const QMimeData* ms, MuseScoreView* view)
             else
                   els.append(_selection.elements());
 
+            deselectAll();
             if (type != ElementType::INVALID) {
                   Element* el = Element::create(type, this);
                   if (el) {
                         el->read(e);
-                        if (el) {
-                              for (Element* target : els) {
-                                    Element* nel = el->clone();
-                                    addRefresh(target->abbox());   // layout() ?!
-                                    EditData ddata(view);
-                                    ddata.view       = view;
-                                    ddata.element    = nel;
-                                    ddata.duration   = duration;
-                                    if (target->acceptDrop(ddata)) {
-                                          target->drop(ddata);
-                                          if (_selection.element())
-                                                addRefresh(_selection.element()->abbox());
-                                          }
+                        for (Element* target : els) {
+                              el->setTrack(target->track());
+                              Element* nel = el->clone();
+                              addRefresh(target->abbox());   // layout() ?!
+                              EditData ddata(view);
+                              ddata.view        = view;
+                              ddata.dropElement = nel;
+                              ddata.duration    = duration;
+                              if (target->acceptDrop(ddata)) {
+                                    target->drop(ddata);
+                                    if (_selection.element())
+                                          addRefresh(_selection.element()->abbox());
                                     }
+                              else
+                                    delete nel;
                               }
-                              delete el;
                         }
+                  delete el;
                   }
             else
                   qDebug("cannot read type");
@@ -893,7 +932,7 @@ void Score::cmdPaste(const QMimeData* ms, MuseScoreView* view)
                   QByteArray data(ms->data(mimeStaffListFormat));
                   if (MScore::debugMode)
                         qDebug("paste <%s>", data.data());
-                  XmlReader e(this, data);
+                  XmlReader e(data);
                   e.setPasteMode(true);
                   if (!pasteStaff(e, cr->segment(), cr->staffIdx()))
                         return;
@@ -926,7 +965,7 @@ void Score::cmdPaste(const QMimeData* ms, MuseScoreView* view)
                   QByteArray data(ms->data(mimeSymbolListFormat));
                   if (MScore::debugMode)
                         qDebug("paste <%s>", data.data());
-                  XmlReader e(this, data);
+                  XmlReader e(data);
                   pasteSymbols(e, cr);
                   }
             }
@@ -952,7 +991,7 @@ void Score::cmdPaste(const QMimeData* ms, MuseScoreView* view)
                   addRefresh(target->abbox());   // layout() ?!
                   EditData ddata(view);
                   ddata.view       = view;
-                  ddata.element    = nel;
+                  ddata.dropElement    = nel;
                   // ddata.duration   = duration;
                   target->drop(ddata);
                   if (_selection.element())

@@ -8,7 +8,7 @@
 #include "libmscore/measure.h"
 #include "libmscore/staff.h"
 #include "libmscore/score.h"
-#include "mscore/preferences.h"
+#include "importmidi_operations.h"
 
 
 // This simple key detection algorithm is from thesis
@@ -50,7 +50,7 @@ void assignKeyListToStaff(const KeyList &kl, Staff *staff)
       for (auto it = kl.begin(); it != kl.end(); ++it) {
             const int tick = it->first;
             Key key  = it->second.key();
-            if ((key == Key::C) && (key == pkey))     // dont insert uneccessary C key
+            if ((key == Key::C) && (key == pkey))     // don’t insert unnecessary C key
                   continue;
             pkey = key;
             KeySig* ks = new KeySig(score);
@@ -115,7 +115,7 @@ void recognizeMainKeySig(QList<MTrack> &tracks)
       {
       bool needToFindKey = false;
 
-      const auto &opers = preferences.midiImportOperations;
+      const auto &opers = midiImportOperations;
       const bool isHuman = opers.data()->trackOpers.isHumanPerformance.value();
       if (isHuman)
             needToFindKey = true;

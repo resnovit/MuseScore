@@ -21,6 +21,7 @@
 #include "element.h"
 #include "spatium.h"
 #include "symbol.h"
+#include "skyline.h"
 
 namespace Ms {
 
@@ -40,11 +41,12 @@ class BarLine;
 
 //---------------------------------------------------------
 //   SysStaff
-///  One staff of a System.
+///  One staff in a System.
 //---------------------------------------------------------
 
 class SysStaff {
       QRectF _bbox;                 // Bbox of StaffLines.
+      Skyline _skyline;
       qreal _yOff { 0    };         // offset of top staff line within bbox
       bool _show  { true };         // derived from Staff or false if empty
                                     // staff is hidden
@@ -61,6 +63,9 @@ class SysStaff {
       bool show() const             { return _show; }
       void setShow(bool v)          { _show = v; }
 
+      const Skyline& skyline() const { return _skyline; }
+      Skyline& skyline()             { return _skyline; }
+
       SysStaff() {}
       ~SysStaff();
       };
@@ -71,7 +76,7 @@ class SysStaff {
 ///    a complete piece of the timeline.
 //---------------------------------------------------------
 
-class System : public Element {
+class System final : public Element {
       SystemDivider* _systemDividerLeft    { 0 };     // to the next system
       SystemDivider* _systemDividerRight   { 0 };
 
@@ -82,7 +87,10 @@ class System : public Element {
 
       qreal _leftMargin              { 0.0    };     ///< left margin for instrument name, brackets etc.
       mutable bool fixedDownDistance { false  };
-      qreal _distance;                                 // temp. variable used during layout
+      qreal _distance;                               // temp. variable used during layout
+
+      SysStaff* firstVisibleSysStaff() const;
+      SysStaff* lastVisibleSysStaff() const;
 
    public:
       System(Score*);
@@ -120,7 +128,7 @@ class System : public Element {
       void removeStaff(int);
 
       int y2staff(qreal y) const;
-      void setInstrumentNames(bool longName);
+      void setInstrumentNames(bool longName, int tick = 0);
       int snap(int tick, const QPointF p) const;
       int snapNote(int tick, const QPointF p, int staff) const;
 
@@ -136,7 +144,7 @@ class System : public Element {
       MeasureBase* nextMeasure(const MeasureBase*) const;
 
       qreal leftMargin() const    { return _leftMargin; }
-      VBox* vbox() const;
+      Box* vbox() const;
 
       const QList<Bracket*>& brackets() const { return _brackets; }
 
@@ -150,8 +158,8 @@ class System : public Element {
       virtual Element* prevSegmentElement() override;
 
       qreal minDistance(System*) const;
-      qreal topDistance(int staffIdx, const Shape&) const;
-      qreal bottomDistance(int staffIdx, const Shape&) const;
+      qreal topDistance(int staffIdx, const SkylineLine&) const;
+      qreal bottomDistance(int staffIdx, const SkylineLine&) const;
       qreal minTop() const;
       qreal minBottom() const;
 

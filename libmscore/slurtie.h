@@ -73,10 +73,11 @@ class SlurTieSegment : public SpannerSegment {
       virtual void endEditDrag(EditData& ed) override;
       virtual void editDrag(EditData&) override;
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID id) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid id) const override;
       virtual void reset() override;
+      virtual void undoChangeProperty(Pid id, const QVariant&, PropertyFlags ps) override;
       virtual void move(const QPointF& s) override;
       virtual bool isEditable() const override { return true; }
 
@@ -107,7 +108,6 @@ class SlurTie : public Spanner {
    protected:
       bool _up;               // actual direction
 
-      QQueue<SpannerSegment*> delSegments;   // "deleted" segments
       Direction _slurDirection;
       qreal firstNoteRestSegmentX(System* system);
       void fixupSegments(unsigned nsegs);
@@ -129,6 +129,8 @@ class SlurTie : public Spanner {
       virtual void layout2(const QPointF, int, struct UP&)  {}
       virtual bool contains(const QPointF&) const { return false; }  // not selectable
 
+      virtual void read(XmlReader&) override;
+
       void writeProperties(XmlWriter& xml) const;
       bool readProperties(XmlReader&);
 
@@ -140,9 +142,9 @@ class SlurTie : public Spanner {
       virtual SlurTieSegment* newSlurTieSegment() = 0;
 
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID id) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid id) const override;
       };
 
 }

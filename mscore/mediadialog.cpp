@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Linux Music Score Editor
-//  $Id:$
 //
 //  Copyright (C) 20011 Werner Schweer and others
 //
@@ -199,7 +198,7 @@ void MediaDialog::addAudioPressed()
             }
       score->setTempomap(tmn);
       syncFile.close();
-      QMessageBox::information(0, "Done", "Done");
+      QMessageBox::information(0, tr("Done"), tr("Done"));
       }
 
 //---------------------------------------------------------

@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Linux Music Score Editor
-//  $Id: instrdialog.cpp 5580 2012-04-27 15:36:57Z wschweer $
 //
 //  Copyright (C) 2002-2009 Werner Schweer and others
 //
@@ -52,7 +51,8 @@ InstrumentsDialog::InstrumentsDialog(QWidget* parent)
       QAction* a = getAction("instruments");
       connect(a, SIGNAL(triggered()), SLOT(reject()));
       addAction(a);
-
+      saveButton->setVisible(false);
+      loadButton->setVisible(false);
       readSettings();
       }
 
@@ -77,7 +77,7 @@ void InstrumentsDialog::on_saveButton_clicked()
          ".",
          tr("MuseScore Instruments") + " (*.xml)",
          0,
-         preferences.nativeDialogs ? QFileDialog::Options() : QFileDialog::DontUseNativeDialog
+         preferences.getBool(PREF_UI_APP_USENATIVEDIALOGS) ? QFileDialog::Options() : QFileDialog::DontUseNativeDialog
          );
       if (name.isEmpty())
             return;
@@ -88,9 +88,8 @@ void InstrumentsDialog::on_saveButton_clicked()
             info.setFile(info.filePath() + ext);
       QFile f(info.filePath());
       if (!f.open(QIODevice::WriteOnly)) {
-            QString s = tr("Open Instruments File\n%1\nfailed: ")
-               + QString(strerror(errno));
-            QMessageBox::critical(mscore, tr("Open Instruments File"), s.arg(f.fileName()));
+            QString s = tr("Open Instruments File\n%1\nfailed: %2").arg(f.fileName(), strerror(errno));
+            QMessageBox::critical(mscore, tr("Open Instruments File"), s);
             return;
             }
 
@@ -105,7 +104,7 @@ void InstrumentsDialog::on_saveButton_clicked()
             }
       xml.etag();
       if (f.error() != QFile::NoError) {
-            QString s = tr("Write Instruments File failed: ") + f.errorString();
+            QString s = tr("Write Instruments File failed: %1").arg(f.errorString());
             QMessageBox::critical(this, tr("Write Instruments File"), s);
             }
       }
@@ -121,7 +120,7 @@ void InstrumentsDialog::on_loadButton_clicked()
           mscoreGlobalShare + "/templates",
          tr("MuseScore Instruments") + " (*.xml)",
          0,
-         preferences.nativeDialogs ? QFileDialog::Options() : QFileDialog::DontUseNativeDialog
+         preferences.getBool(PREF_UI_APP_USENATIVEDIALOGS) ? QFileDialog::Options() : QFileDialog::DontUseNativeDialog
          );
       if (fn.isEmpty())
             return;
@@ -173,6 +172,24 @@ QTreeWidget* InstrumentsDialog::partiturList()
       }
 
 //---------------------------------------------------------
+//   buildInstrumentsList
+//---------------------------------------------------------
+
+void InstrumentsDialog::buildInstrumentsList()
+      {
+      instrumentsWidget->buildTemplateList();
+      }
+
+//---------------------------------------------------------
+//   updateInstrumentDialog
+//---------------------------------------------------------
+
+void MuseScore::updateInstrumentDialog()
+      {
+      if (instrList)
+            instrList->buildInstrumentsList();
+      }
+//---------------------------------------------------------
 //   editInstrList
 //---------------------------------------------------------
 
@@ -196,11 +213,11 @@ void MuseScore::editInstrList()
             masterScore->endCmd();
             return;
             }
-      ScoreView* cv = currentScoreView();
-      if (cv && cv->noteEntryMode()) {
-		cv->cmd(getAction("escape"));
+      ScoreView* csv = currentScoreView();
+      if (csv && csv->noteEntryMode()) {
+		csv->cmd(getAction("escape"));
             qApp->processEvents();
-            updateInputState(cv->score());
+            updateInputState(csv->score());
             }
       masterScore->inputState().setTrack(-1);
 
@@ -217,7 +234,7 @@ void MuseScore::editInstrList()
             }
       Key normalizedC = Key::C;
       // normalize the keyevents to concert pitch if necessary
-      if (firstStaff && !masterScore->styleB(StyleIdx::concertPitch) && firstStaff->part()->instrument()->transpose().chromatic ) {
+      if (firstStaff && !masterScore->styleB(Sid::concertPitch) && firstStaff->part()->instrument()->transpose().chromatic ) {
             int interval = firstStaff->part()->instrument()->transpose().chromatic;
             normalizedC = transposeKey(normalizedC, interval);
             for (auto i = tmpKeymap.begin(); i != tmpKeymap.end(); ++i) {
@@ -296,7 +313,7 @@ void MuseScore::editInstrList()
             else {
                   part = pli->part;
                   if (part->show() != pli->visible())
-                        part->undoChangeProperty(P_ID::VISIBLE, pli->visible());
+                        part->undoChangeProperty(Pid::VISIBLE, pli->visible());
                   for (int cidx = 0; pli->child(cidx); ++cidx) {
                         StaffListItem* sli = static_cast<StaffListItem*>(pli->child(cidx));
                         if (sli->op() == ListItemOp::I_DELETE) {
@@ -336,8 +353,8 @@ void MuseScore::editInstrList()
                               if (linkedStaff) {
                                     // do not create a link if linkedStaff will be removed,
                                     for (int k = 0; pli->child(k); ++k) {
-                                          StaffListItem* i = static_cast<StaffListItem*>(pli->child(k));
-                                          if (i->op() == ListItemOp::I_DELETE && i->staff() == linkedStaff) {
+                                          StaffListItem* li = static_cast<StaffListItem*>(pli->child(k));
+                                          if (li->op() == ListItemOp::I_DELETE && li->staff() == linkedStaff) {
                                                 linkedStaff = 0;
                                                 break;
                                                 }
@@ -411,8 +428,8 @@ void MuseScore::editInstrList()
       for (Score* s : masterScore->scoreList()) {
             int n = s->nstaves();
             int curSpan = 0;
-            for (int i = 0; i < n; ++i) {
-                  Staff* staff = s->staff(i);
+            for (int j = 0; j < n; ++j) {
+                  Staff* staff = s->staff(j);
                   int span = staff->barLineSpan();
                   int setSpan = -1;
 
@@ -422,12 +439,12 @@ void MuseScore::editInstrList()
                         if (span == 0) {
                               // no span; this staff must have been within a span
                               // update it to a span of 1
-                              setSpan = 1;
+                              setSpan = j;
                               }
-                        else if (span > (n - i)) {
+                        else if (span > (n - j)) {
                               // span too big; staves must have been removed
                               // reduce span to last staff
-                              setSpan = n - i;
+                              setSpan = n - j;
                               }
                         else if (span > 1 && staff->barLineTo() > 0) {
                               // TODO: check if span is still valid
@@ -467,8 +484,8 @@ void MuseScore::editInstrList()
 
                   // update brackets
                   for (BracketItem* bi : staff->brackets()) {
-                        if ((bi->bracketSpan() > (n - i)))
-                              bi->undoChangeProperty(P_ID::BRACKET_SPAN, n - i);
+                        if ((bi->bracketSpan() > (n - j)))
+                              bi->undoChangeProperty(Pid::BRACKET_SPAN, n - j);
                         }
                   }
             }
@@ -486,17 +503,19 @@ void MuseScore::editInstrList()
                   masterScore->undo(new RemoveExcerpt(excerpt));
             else {
                   for (Staff* s : sl) {
-                        LinkedStaves* sll = s->linkedStaves();
-                        for (Staff* ss : sll->staves())
+                        const LinkedElements* sll = s->links();
+                        for (auto le : *sll) {
+                              Staff* ss = toStaff(le);
                               if (ss->primaryStaff()) {
-                                    for (int i = s->idx() * VOICES; i < (s->idx() + 1) * VOICES; i++) {
-                                          int strack = tr.key(i, -1);
+                                    for (int j = s->idx() * VOICES; j < (s->idx() + 1) * VOICES; j++) {
+                                          int strack = tr.key(j, -1);
                                           if (strack != -1 && ((strack & ~3) == ss->idx()))
                                                 break;
                                           else if (strack != -1)
                                                 tr.insert(ss->idx() + strack % VOICES, tr.value(strack, -1));
                                           }
                                     }
+                              }
                         }
                   }
             }

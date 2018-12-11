@@ -14,6 +14,8 @@
 
 namespace Ms {
 
+extern void populatePlacement(QComboBox*);
+
 //---------------------------------------------------------
 //   InspectorDynamic
 //---------------------------------------------------------
@@ -24,16 +26,20 @@ InspectorDynamic::InspectorDynamic(QWidget* parent)
       d.setupUi(addWidget());
 
       const std::vector<InspectorItem> il = {
-            { P_ID::DYNAMIC_RANGE,    0, d.dynRange,     d.resetDynRange     },
-            { P_ID::VELOCITY,         0, d.velocity,     0                   },
-            { P_ID::PLACEMENT,        0, d.placement,    d.resetPlacement    }
+            { Pid::DYNAMIC_RANGE,    0, d.dynRange,     d.resetDynRange     },
+            { Pid::VELOCITY,         0, d.velocity,     0                   },
+            { Pid::SUB_STYLE,        0, d.style,        d.resetStyle        },
+            { Pid::PLACEMENT,        0, d.placement,    d.resetPlacement    }
             };
       const std::vector<InspectorPanel> ppList = {
             { d.title, d.panel }
             };
-      d.placement->clear();
-      d.placement->addItem(tr("Above"), 0);
-      d.placement->addItem(tr("Below"), 1);
+      populatePlacement(d.placement);
+
+      d.style->clear();
+      for (auto ss : primaryTextStyles())
+            d.style->addItem(textStyleUserName(ss), int(ss));
+
       mapSignals(il, ppList);
       }
 

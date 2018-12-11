@@ -123,11 +123,14 @@ class MeasureBase : public Element {
       int endTick() const                    { return tick() + ticks();  }
       void setTick(int t)                    { _tick = t;     }
 
+      Fraction rfrac() const override        { return 0;      }
+      Fraction afrac() const override;
+
       qreal pause() const;
 
-      virtual QVariant getProperty(P_ID) const override;
-      virtual bool setProperty(P_ID, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
+      virtual QVariant getProperty(Pid) const override;
+      virtual bool setProperty(Pid, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
 
       void clearElements();
       ElementList takeElements();
@@ -167,6 +170,7 @@ class MeasureBase : public Element {
       virtual void computeMinWidth() { };
 
       int index() const;
+      int measureIndex() const;
       };
 
 

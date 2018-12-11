@@ -17,6 +17,7 @@
 #include "measure.h"
 #include "segment.h"
 #include "score.h"
+#include "system.h"
 #include "undo.h"
 #include "xml.h"
 
@@ -24,18 +25,18 @@ namespace Ms {
 
 const char* keyNames[] = {
       QT_TRANSLATE_NOOP("MuseScore", "G major, E minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "Cb major, Ab minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "C♭ major, A♭ minor"),
       QT_TRANSLATE_NOOP("MuseScore", "D major, B minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "Gb major, Eb minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "G♭ major, E♭ minor"),
       QT_TRANSLATE_NOOP("MuseScore", "A major, F# minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "Db major, Bb minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "E major, C# minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "Ab major, F minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "B major, G# minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "Eb major, C minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "F# major, D# minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "Bb major, G minor"),
-      QT_TRANSLATE_NOOP("MuseScore", "C# major, A# minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "D♭ major, B♭ minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "E major, C♯ minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "A♭ major, F minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "B major, G♯ minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "E♭ major, C minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "F♯ major, D♯ minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "B♭ major, G minor"),
+      QT_TRANSLATE_NOOP("MuseScore", "C♯ major, A♯ minor"),
       QT_TRANSLATE_NOOP("MuseScore", "F major, D minor"),
       QT_TRANSLATE_NOOP("MuseScore", "C major, A minor"),
       QT_TRANSLATE_NOOP("MuseScore", "Open/Atonal")
@@ -46,9 +47,8 @@ const char* keyNames[] = {
 //---------------------------------------------------------
 
 KeySig::KeySig(Score* s)
-  : Element(s)
+  : Element(s, ElementFlag::ON_STAFF)
       {
-      setFlags(ElementFlag::SELECTABLE | ElementFlag::ON_STAFF);
       _showCourtesy = true;
       _hideNaturals = false;
       }
@@ -107,7 +107,7 @@ void KeySig::layout()
       // determine current clef for this staff
       ClefType clef = ClefType::G;
       if (staff())
-            clef = staff()->clef(segment()->tick());
+            clef = staff()->clef(tick());
 
       int accidentals = 0, naturals = 0;
       int t1 = int(_sig.key());
@@ -136,11 +136,12 @@ void KeySig::layout()
       // If we're not force hiding naturals (Continuous panel), use score style settings
       if (!_hideNaturals)
             naturalsOn = (prevMeasure && !prevMeasure->sectionBreak()
-               && (score()->styleI(StyleIdx::keySigNaturals) != int(KeySigNatural::NONE))) || (t1 == 0);
+               && (score()->styleI(Sid::keySigNaturals) != int(KeySigNatural::NONE))) || (t1 == 0);
 
 
       // Don't repeat naturals if shown in courtesy
-      if (prevMeasure && prevMeasure->findSegment(SegmentType::KeySigAnnounce, segment()->tick())
+      if (measure() && measure()->system() && measure() == measure()->system()->firstMeasure()
+          && prevMeasure && prevMeasure->findSegment(SegmentType::KeySigAnnounce, tick())
           && !segment()->isKeySigAnnounceType())
             naturalsOn = false;
       if (track() == -1)
@@ -149,7 +150,8 @@ void KeySig::layout()
       int coffset = 0;
       Key t2      = Key::C;
       if (naturalsOn) {
-            t2 = staff()->key(segment()->tick() - 1);
+            if (staff())
+                  t2 = staff()->key(tick() - 1);
             if (t2 == Key::C)
                   naturalsOn = false;
             else {
@@ -179,7 +181,7 @@ void KeySig::layout()
 
       bool prefixNaturals =
             naturalsOn
-            && (score()->styleI(StyleIdx::keySigNaturals) == int(KeySigNatural::BEFORE) || t1 * int(t2) < 0);
+            && (score()->styleI(Sid::keySigNaturals) == int(KeySigNatural::BEFORE) || t1 * int(t2) < 0);
 
       // naturals should go AFTER accidentals if they should not go before!
       bool suffixNaturals = naturalsOn && !prefixNaturals;
@@ -281,7 +283,7 @@ void KeySig::draw(QPainter* p) const
 
 bool KeySig::acceptDrop(EditData& data) const
       {
-      return data.element->type() == ElementType::KEYSIG;
+      return data.dropElement->type() == ElementType::KEYSIG;
       }
 
 //---------------------------------------------------------
@@ -290,7 +292,7 @@ bool KeySig::acceptDrop(EditData& data) const
 
 Element* KeySig::drop(EditData& data)
       {
-      KeySig* ks = static_cast<KeySig*>(data.element);
+      KeySig* ks = toKeySig(data.dropElement);
       if (ks->type() != ElementType::KEYSIG) {
             delete ks;
             return 0;
@@ -327,7 +329,7 @@ void KeySig::setKey(Key key)
 
 void KeySig::write(XmlWriter& xml) const
       {
-      xml.stag(name());
+      xml.stag(this);
       Element::writeProperties(xml);
       if (_sig.isAtonal()) {
             xml.tag("custom", 1);
@@ -371,8 +373,8 @@ void KeySig::read(XmlReader& e)
             if (tag == "KeySym") {
                   KeySym ks;
                   while (e.readNextStartElement()) {
-                        const QStringRef& tag(e.name());
-                        if (tag == "sym") {
+                        const QStringRef& t(e.name());
+                        if (t == "sym") {
                               QString val(e.readElementText());
                               bool valid;
                               SymId id = SymId(val.toInt(&valid));
@@ -386,7 +388,7 @@ void KeySig::read(XmlReader& e)
                                     }
                               ks.sym = id;
                               }
-                        else if (tag == "pos")
+                        else if (t == "pos")
                               ks.spos = e.readPoint();
                         else
                               e.unknown();
@@ -507,17 +509,17 @@ int KeySig::tick() const
 
 void KeySig::undoSetShowCourtesy(bool v)
       {
-      undoChangeProperty(P_ID::SHOW_COURTESY, v);
+      undoChangeProperty(Pid::SHOW_COURTESY, v);
       }
 
 //---------------------------------------------------------
 //   getProperty
 //---------------------------------------------------------
 
-QVariant KeySig::getProperty(P_ID propertyId) const
+QVariant KeySig::getProperty(Pid propertyId) const
       {
       switch (propertyId) {
-            case P_ID::SHOW_COURTESY: return int(showCourtesy());
+            case Pid::SHOW_COURTESY: return int(showCourtesy());
             default:
                   return Element::getProperty(propertyId);
             }
@@ -527,10 +529,10 @@ QVariant KeySig::getProperty(P_ID propertyId) const
 //   setProperty
 //---------------------------------------------------------
 
-bool KeySig::setProperty(P_ID propertyId, const QVariant& v)
+bool KeySig::setProperty(Pid propertyId, const QVariant& v)
       {
       switch (propertyId) {
-            case P_ID::SHOW_COURTESY:
+            case Pid::SHOW_COURTESY:
                   if (generated())
                         return false;
                   setShowCourtesy(v.toBool());
@@ -549,10 +551,10 @@ bool KeySig::setProperty(P_ID propertyId, const QVariant& v)
 //   propertyDefault
 //---------------------------------------------------------
 
-QVariant KeySig::propertyDefault(P_ID id) const
+QVariant KeySig::propertyDefault(Pid id) const
       {
       switch (id) {
-            case P_ID::SHOW_COURTESY:     return true;
+            case Pid::SHOW_COURTESY:     return true;
             default:
                   return Element::propertyDefault(id);
             }

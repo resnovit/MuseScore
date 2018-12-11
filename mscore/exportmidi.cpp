@@ -85,7 +85,7 @@ void ExportMidi::writeHeader()
       TimeSigMap* sigmap = cs->sigmap();
       foreach(const RepeatSegment* rs, *cs->repeatList()) {
             int startTick  = rs->tick;
-            int endTick    = startTick + rs->len;
+            int endTick    = startTick + rs->len();
             int tickOffset = rs->utick - rs->tick;
 
             auto bs = sigmap->lower_bound(startTick);
@@ -129,14 +129,14 @@ void ExportMidi::writeHeader()
       //---------------------------------------------------
 
       int staffIdx = 0;
-      for (auto &track: mf.tracks()) {
+      for (auto& track1: mf.tracks()) {
             Staff* staff  = cs->staff(staffIdx);
             KeyList* keys = staff->keyList();
 
             bool initialKeySigFound = false;
             for (const RepeatSegment* rs : *cs->repeatList()) {
                   int startTick  = rs->tick;
-                  int endTick    = startTick + rs->len;
+                  int endTick    = startTick + rs->len();
                   int tickOffset = rs->utick - rs->tick;
 
                   auto sk = keys->lower_bound(startTick);
@@ -153,7 +153,7 @@ void ExportMidi::writeHeader()
                         data[1]   = 0;  // major
                         ev.setEData(data);
                         int tick = ik->first + tickOffset;
-                        track.insert(pauseMap.addPauseTicks(tick), ev);
+                        track1.insert(pauseMap.addPauseTicks(tick), ev);
                         if (tick == 0)
                               initialKeySigFound = true;
                         }
@@ -170,7 +170,7 @@ void ExportMidi::writeHeader()
                   data[0]   = key;
                   data[1]   = 0;  // major
                   ev.setEData(data);
-                  track.insert(0, ev);
+                  track1.insert(0, ev);
                   }
 
             ++staffIdx;
@@ -208,12 +208,8 @@ void ExportMidi::writeHeader()
 //    return false on error
 //---------------------------------------------------------
 
-bool ExportMidi::write(const QString& name, bool midiExpandRepeats)
+bool ExportMidi::write(QIODevice* device, bool midiExpandRepeats, bool exportRPNs)
       {
-      f.setFileName(name);
-      if (!f.open(QIODevice::WriteOnly))
-            return false;
-
       mf.setDivision(MScore::division);
       mf.setFormat(1);
       QList<MidiTrack>& tracks = mf.tracks();
@@ -221,9 +217,9 @@ bool ExportMidi::write(const QString& name, bool midiExpandRepeats)
       for (int i = 0; i < cs->nstaves(); ++i)
             tracks.append(MidiTrack());
 
-      cs->updateSwing();
-      cs->createPlayEvents();
-      cs->updateRepeatList(midiExpandRepeats);
+      EventMap events;
+      cs->renderMidi(&events, false, midiExpandRepeats);
+
       pauseMap.calculate(cs);
       writeHeader();
 
@@ -235,27 +231,22 @@ bool ExportMidi::write(const QString& name, bool midiExpandRepeats)
             track.setOutPort(part->midiPort());
             track.setOutChannel(part->midiChannel());
 
-            // Render each staff only once
-            EventMap events;
-            cs->renderStaff(&events, staff);
-            cs->renderSpanners(&events, staffIdx);
-
-            // Pass throught the all instruments in the part
+            // Pass through the all instruments in the part
             const InstrumentList* il = part->instruments();
             for(auto j = il->begin(); j!= il->end(); j++) {
-                  // Pass throught the all channels of the instrument
+                  // Pass through the all channels of the instrument
                   // "normal", "pizzicato", "tremolo" for Strings,
                   // "normal", "mute" for Trumpet
                   foreach(const Channel* ch, j->second->channel()) {
-                        char port    = part->masterScore()->midiPort(ch->channel);
-                        char channel = part->masterScore()->midiChannel(ch->channel);
+                        char port    = part->masterScore()->midiPort(ch->channel());
+                        char channel = part->masterScore()->midiChannel(ch->channel());
 
                         if (staff->isTop()) {
                               track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_RESET_ALL_CTRL, 0));
                               // We need this to get the correct pitch of bends
                               // Hidden under preferences because some software
                               // crashes when receiving RPNs: https://musescore.org/en/node/37431
-                              if (channel != 9 && preferences.midiExportRPNs) {
+                              if (channel != 9 && exportRPNs) {
                                     // set pitch bend sensitivity to 12 semitones:
                                     track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_LRPN, 0));
                                     track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_HRPN, 0));
@@ -271,12 +262,12 @@ bool ExportMidi::write(const QString& name, bool midiExpandRepeats)
                                     track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_HRPN, 127));
                               }
 
-                              if (ch->program != -1)
-                                    track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_PROGRAM, ch->program));
-                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_VOLUME, ch->volume));
-                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_PANPOT, ch->pan));
-                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_REVERB_SEND, ch->reverb));
-                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_CHORUS_SEND, ch->chorus));
+                              if (ch->program() != -1)
+                                    track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_PROGRAM, ch->program()));
+                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_VOLUME, ch->volume()));
+                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_PANPOT, ch->pan()));
+                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_REVERB_SEND, ch->reverb()));
+                              track.insert(0, MidiEvent(ME_CONTROLLER, channel, CTRL_CHORUS_SEND, ch->chorus()));
                               }
 
                         // Export port to MIDI META event
@@ -292,7 +283,20 @@ bool ExportMidi::write(const QString& name, bool midiExpandRepeats)
                               }
 
                         for (auto i = events.begin(); i != events.end(); ++i) {
-                              NPlayEvent event(i->second);
+                              const NPlayEvent& event = i->second;
+
+                              if (event.discard() == staffIdx + 1 && event.velo() > 0)
+                                    // turn note off so we can restrike it in another track
+                                    track.insert(pauseMap.addPauseTicks(i->first), MidiEvent(ME_NOTEON, channel,
+                                                                     event.pitch(), 0));
+
+                              if (event.getOriginatingStaff() != staffIdx)
+                                    continue;
+
+                              if (event.discard() && event.velo() == 0)
+                                    // ignore noteoff but restrike noteon
+                                    continue;
+
                               char eventPort    = cs->masterScore()->midiPort(event.channel());
                               char eventChannel = cs->masterScore()->midiChannel(event.channel());
                               if (port != eventPort || channel != eventChannel)
@@ -318,7 +322,15 @@ bool ExportMidi::write(const QString& name, bool midiExpandRepeats)
                   }
             ++staffIdx;
             }
-      return !mf.write(&f);
+      return !mf.write(device);
+      }
+
+bool ExportMidi::write(const QString& name, bool midiExpandRepeats, bool exportRPNs)
+      {
+      f.setFileName(name);
+      if (!f.open(QIODevice::WriteOnly))
+            return false;
+       return write(&f, midiExpandRepeats, exportRPNs);
       }
 
 //---------------------------------------------------------
@@ -340,26 +352,31 @@ void ExportMidi::PauseMap::calculate(const Score* s)
 
       foreach(const RepeatSegment* rs, *s->repeatList()) {
             int startTick  = rs->tick;
-            int endTick    = startTick + rs->len;
+            int endTick    = startTick + rs->len();
             int tickOffset = rs->utick - rs->tick;
 
             auto se = tempomap->lower_bound(startTick);
-            auto ee = tempomap->lower_bound(endTick);
+            auto ee = tempomap->lower_bound(endTick+1); // +1 to include first tick of next RepeatSegment
 
             for (auto it = se; it != ee; ++it) {
                   int tick = it->first;
                   int utick = tick + tickOffset;
 
                   if (it->second.pause == 0.0) {
-                        tempomapWithPauses->insert(std::pair<const int, TEvent> (this->addPauseTicks(utick), it->second));
+                        // We have a regular tempo change. Don't include tempo change from first tick of next RepeatSegment (it will be included later).
+                        if (tick != endTick)
+                              tempomapWithPauses->insert(std::pair<const int, TEvent> (this->addPauseTicks(utick), it->second));
                         }
                   else {
-                        Fraction timeSig(sigmap->timesig(tick).timesig());
-                        qreal quarterNotesPerMeasure = (4.0 * timeSig.numerator()) / timeSig.denominator();
-                        int ticksPerMeasure =  quarterNotesPerMeasure * MScore::division; // store a full measure of ticks to keep barlines in same places
-                        tempomapWithPauses->setTempo(this->addPauseTicks(utick), quarterNotesPerMeasure / it->second.pause); // new tempo for pause
-                        this->insert(std::pair<const int, int> (utick, ticksPerMeasure + this->offsetAtUTick(utick))); // store running total of extra ticks
-                        tempomapWithPauses->setTempo(this->addPauseTicks(utick), it->second.tempo); // restore previous tempo
+                        // We have a pause event. Don't include pauses from first tick of current RepeatSegment (it was included in the previous one).
+                        if (tick != startTick) {
+                              Fraction timeSig(sigmap->timesig(tick).timesig());
+                              qreal quarterNotesPerMeasure = (4.0 * timeSig.numerator()) / timeSig.denominator();
+                              int ticksPerMeasure =  quarterNotesPerMeasure * MScore::division; // store a full measure of ticks to keep barlines in same places
+                              tempomapWithPauses->setTempo(this->addPauseTicks(utick), quarterNotesPerMeasure / it->second.pause); // new tempo for pause
+                              this->insert(std::pair<const int, int> (utick, ticksPerMeasure + this->offsetAtUTick(utick))); // store running total of extra ticks
+                              tempomapWithPauses->setTempo(this->addPauseTicks(utick), it->second.tempo); // restore previous tempo
+                              }
                         }
                   }
             }

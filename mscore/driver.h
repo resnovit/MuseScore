@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Linux Music Score Editor
-//  $Id: driver.h 5660 2012-05-22 14:17:39Z wschweer $
 //
 //  Copyright (C) 2002-2009 Werner Schweer and others
 //
@@ -56,6 +55,7 @@ class Driver {
       virtual void updateOutPortCount(int) {}
       };
 
+extern bool alsaIsUsed, jackIsUsed, portAudioIsUsed, pulseAudioIsUsed;
 
 } // namespace Ms
 #endif

@@ -24,7 +24,7 @@ class Accidental;
 //   @@ VibratoSegment
 //---------------------------------------------------------
 
-class VibratoSegment : public LineSegment {
+class VibratoSegment final : public LineSegment {
       std::vector<SymId> _symbols;
 
       void symbolLine(SymId start, SymId fill);
@@ -32,17 +32,16 @@ class VibratoSegment : public LineSegment {
 
    protected:
    public:
-      VibratoSegment(Score* s) : LineSegment(s)      {}
+      VibratoSegment(Spanner* sp, Score* s) : LineSegment(sp, s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)      {}
       Vibrato* vibrato() const                       { return toVibrato(spanner()); }
       virtual ElementType type() const override      { return ElementType::VIBRATO_SEGMENT; }
       virtual VibratoSegment* clone() const override { return new VibratoSegment(*this); }
       virtual void draw(QPainter*) const override;
       virtual void layout() override;
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
-      Shape shape() const override;
 
+      virtual Element* propertyDelegate(Pid) override;
+
+      Shape shape() const override;
       std::vector<SymId> symbols() const           { return _symbols; }
       void setSymbols(const std::vector<SymId>& s) { _symbols = s; }
       };
@@ -51,7 +50,7 @@ class VibratoSegment : public LineSegment {
 //   Vibrato
 //---------------------------------------------------------
 
-class Vibrato : public SLine {
+class Vibrato final : public SLine {
    public:
       enum class Type : char {
             GUITAR_VIBRATO, GUITAR_VIBRATO_WIDE, VIBRATO_SAWTOOTH, VIBRATO_SAWTOOTH_WIDE
@@ -82,13 +81,15 @@ class Vibrato : public SLine {
 
       Segment* segment() const          { return (Segment*)parent(); }
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
-      virtual void setYoff(qreal) override;
-
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
       virtual QString accessibleInfo() const override;
       };
+
+//---------------------------------------------------------
+//   VibratoTableItem
+//---------------------------------------------------------
 
 struct VibratoTableItem {
       Vibrato::Type type;

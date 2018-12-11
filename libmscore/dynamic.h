@@ -28,7 +28,7 @@ class Segment;
 //   @P range  enum (Dynamic.STAFF, .PART, .SYSTEM)
 //-----------------------------------------------------------------------------
 
-class Dynamic : public Text {
+class Dynamic final : public TextBase {
    public:
       enum class Type : char {
             OTHER,
@@ -74,12 +74,13 @@ class Dynamic : public Text {
       Range _dynRange;   // STAFF, PART, SYSTEM
 
       virtual QRectF drag(EditData&) override;
+      virtual Sid getPropertyStyle(Pid) const override;
 
    public:
       Dynamic(Score*);
       Dynamic(const Dynamic&);
       virtual Dynamic* clone() const override     { return new Dynamic(*this); }
-      virtual ElementType type() const override { return ElementType::DYNAMIC; }
+      virtual ElementType type() const override   { return ElementType::DYNAMIC; }
       Segment* segment() const                    { return (Segment*)parent(); }
       Measure* measure() const                    { return (Measure*)parent()->parent(); }
 
@@ -105,9 +106,9 @@ class Dynamic : public Text {
       void setDynRange(Range t) { _dynRange = t;    }
       void undoSetDynRange(Range t);
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool     setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID id) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool     setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid id) const override;
 
       virtual QString accessibleInfo() const override;
       virtual QString screenReaderInfo() const override;

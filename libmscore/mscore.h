@@ -18,8 +18,8 @@
 
 namespace Ms {
 
-#define MSC_VERSION     "3.00"
-static constexpr int MSCVERSION = 300;
+#define MSC_VERSION     "3.01"
+static constexpr int MSCVERSION = 301;
 
 // History:
 //    1.3   added staff->_barLineSpan
@@ -66,7 +66,7 @@ static constexpr int MSCVERSION = 300;
 class MStyle;
 class Sequencer;
 
-enum class HairpinType : char;
+enum class HairpinType : signed char;
 
 #ifndef VOICES
 #define VOICES 4
@@ -321,12 +321,9 @@ class MScore : public QObject {
    public:
       enum class DirectionH : char { AUTO, LEFT, RIGHT };
       enum class OrnamentStyle : char { DEFAULT, BAROQUE};
-      enum class GlissandoStyle : char { CHROMATIC, WHITE_KEYS, BLACK_KEYS, DIATONIC };
 
       static MsError _error;
       static std::vector<MScoreError> errorList;
-
-      Q_ENUMS(DirectionH OrnamentStyle GlissandoStyle)
 
       static void init();
 
@@ -334,6 +331,7 @@ class MScore : public QObject {
       static MStyle& defaultStyle()                { return _defaultStyle;         }
       static const MStyle* defaultStyleForParts()  { return _defaultStyleForParts; }
 
+      static bool readDefaultStyle(QString file);
       static void setDefaultStyle(const MStyle& s) { _defaultStyle = s; }
       static void defaultStyleForPartsHasChanged();
 
@@ -369,8 +367,10 @@ class MScore : public QObject {
       static bool noHorizontalStretch;
       static bool noVerticalStretch;
       static bool showSegmentShapes;
+      static bool showSkylines;
       static bool showMeasureShapes;
       static bool showBoundingRect;
+      static bool showSystemBoundingRect;
       static bool showCorruptedMeasures;
       static bool useFallbackFont;
       static bool autoplaceSlurs;

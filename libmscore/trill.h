@@ -24,15 +24,17 @@ class Accidental;
 //   @@ TrillSegment
 //---------------------------------------------------------
 
-class TrillSegment : public LineSegment {
+class TrillSegment final : public LineSegment {
       std::vector<SymId> _symbols;
 
       void symbolLine(SymId start, SymId fill);
       void symbolLine(SymId start, SymId fill, SymId end);
+      virtual Sid getPropertyStyle(Pid) const override;
 
    protected:
    public:
-      TrillSegment(Score* s) : LineSegment(s)      {}
+      TrillSegment(Spanner* sp, Score* s) : LineSegment(sp, s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)      {}
+      TrillSegment(Score* s) : LineSegment(s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)      {}
       Trill* trill() const                         { return (Trill*)spanner(); }
       virtual ElementType type() const override  { return ElementType::TRILL_SEGMENT; }
       virtual TrillSegment* clone() const override { return new TrillSegment(*this); }
@@ -40,9 +42,9 @@ class TrillSegment : public LineSegment {
       virtual bool acceptDrop(EditData&) const override;
       virtual Element* drop(EditData&) override;
       virtual void layout() override;
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
+
+      virtual Element* propertyDelegate(Pid) override;
+
       virtual void add(Element*) override;
       virtual void remove(Element*) override;
       virtual void scanElements(void* data, void (*func)(void*, Element*), bool all) override;
@@ -57,14 +59,15 @@ class TrillSegment : public LineSegment {
 //   @P trillType  enum (Trill.DOWNPRALL_LINE, .PRALLPRALL_LINE, .PURE_LINE, .TRILL_LINE, .UPPRALL_LINE)
 //---------------------------------------------------------
 
-class Trill : public SLine {
+class Trill final : public SLine {
+      virtual Sid getPropertyStyle(Pid) const override;
+
    public:
       enum class Type : char {
             TRILL_LINE, UPPRALL_LINE, DOWNPRALL_LINE, PRALLPRALL_LINE,
             };
 
    private:
-      Q_PROPERTY(Ms::Trill::Type trillType READ trillType WRITE undoSetTrillType)
       Type _trillType;
       Accidental* _accidental;
       MScore::OrnamentStyle _ornamentStyle; // for use in ornaments such as trill
@@ -84,7 +87,6 @@ class Trill : public SLine {
       virtual void read(XmlReader&) override;
 
       void setTrillType(const QString& s);
-      void undoSetTrillType(Type val);
       void setTrillType(Type tt)          { _trillType = tt; }
       Type trillType() const              { return _trillType; }
       void setOrnamentStyle(MScore::OrnamentStyle val) { _ornamentStyle = val;}
@@ -99,10 +101,9 @@ class Trill : public SLine {
       Segment* segment() const          { return (Segment*)parent(); }
       virtual void scanElements(void* data, void (*func)(void*, Element*), bool all=true) override;
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
-      virtual void setYoff(qreal) override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
 
       virtual QString accessibleInfo() const override;
       };

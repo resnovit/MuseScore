@@ -98,7 +98,7 @@ NoteVal Score::noteValForPosition(Position pos, bool &error)
                   int step           = absStep(line, clef);
                   int octave         = step/7;
                   nval.pitch         = step2pitch(step) + octave * 12 + int(acci);
-                  if (styleB(StyleIdx::concertPitch))
+                  if (styleB(Sid::concertPitch))
                         nval.tpc1 = step2tpc(step % 7, acci);
                   else {
                         nval.pitch += instr->transpose().chromatic;
@@ -155,6 +155,14 @@ Note* Score::addPitch(NoteVal& nval, bool addFlag)
       Fraction duration;
       if (_is.usingNoteEntryMethod(NoteEntryMethod::REPITCH)) {
             duration = _is.cr()->duration();
+            }
+      else if (_is.usingNoteEntryMethod(NoteEntryMethod::REALTIME_AUTO) || _is.usingNoteEntryMethod(NoteEntryMethod::REALTIME_MANUAL)) {
+            // FIXME: truncate duration at barline in real-time modes.
+            //   The user might try to enter a duration that is too long to fit in the remaining space in the measure.
+            //   We could split the duration at the barline and continue into the next bar, but this would create extra
+            //   notes, extra ties, and extra pain. Instead, we simply truncate the duration at the barline.
+            int ticks2measureEnd = _is.segment()->measure()->ticks() - _is.segment()->rtick();
+            duration = _is.duration().ticks() > ticks2measureEnd ? Fraction::fromTicks(ticks2measureEnd) : _is.duration().fraction();
             }
       else {
             duration = _is.duration().fraction();
@@ -282,10 +290,13 @@ void Score::putNote(const QPointF& pos, bool replace, bool insert)
             return;
             }
       Score* score = p.segment->score();
-      if (score->inputState().usingNoteEntryMethod(NoteEntryMethod::REPITCH))
+      // it is not safe to call Score::repitchNote() if p is on a TAB staff
+      bool isTablature = staff(p.staffIdx)->isTabStaff(p.segment->tick());
+      if (score->inputState().usingNoteEntryMethod(NoteEntryMethod::REPITCH) && !isTablature)
             score->repitchNote(p, replace);
       else {
-            if (insert)
+            if (insert
+               || score->inputState().usingNoteEntryMethod(NoteEntryMethod::TIMEWISE))
                   score->insertChord(p);
             else
                   score->putNote(p, replace);
@@ -358,6 +369,7 @@ void Score::putNote(const Position& p, bool replace)
                                     int tpc1 = note->tpc1default(nval.pitch);
                                     int tpc2 = note->tpc2default(nval.pitch);
                                     undoChangeFretting(note, nval.pitch, nval.string, nval.fret, tpc1, tpc2);
+                                    setPlayNote(true);
                                     return;
                                     }
                         }
@@ -410,7 +422,7 @@ void Score::repitchNote(const Position& p, bool replace)
       int octave = step / 7;
       nval.pitch = step2pitch(step) + octave * 12 + int(acci);
 
-      if (styleB(StyleIdx::concertPitch))
+      if (styleB(Sid::concertPitch))
             nval.tpc1 = step2tpc(step % 7, acci);
       else {
             nval.pitch += st->part()->instrument(s->tick())->transpose().chromatic;
@@ -545,7 +557,7 @@ void Score::localInsertChord(const Position& pos)
       undo(new InsertTime(this, tick, len));
 
       for (Segment* s = pos.segment; s; s = s-> next())
-            s->undoChangeProperty(P_ID::TICK, s->rtick() + len);
+            s->undoChangeProperty(Pid::TICK, s->rtick() + len);
       undo(new ChangeMeasureLen(m, m->len() + fraction));
 
       Segment* s = m->undoGetSegment(SegmentType::ChordRest, tick);
@@ -563,14 +575,14 @@ void Score::localInsertChord(const Position& pos)
                         continue;
                         }
                   Segment* seg1 = 0;
-                  for (Segment* s = fs; s; s = s->next(SegmentType::ChordRest)) {
-                        if (s->element(track)) {
-                              ChordRest* cr = toChordRest(s->element(track));
-                              if (s->tick() > tick)
+                  for (Segment* ns = fs; ns; ns = ns->next(SegmentType::ChordRest)) {
+                        if (ns->element(track)) {
+                              ChordRest* cr = toChordRest(ns->element(track));
+                              if (ns->tick() > tick)
                                     break;
-                              if (s->tick() + cr->duration().ticks() < tick)
+                              if (ns->tick() + cr->duration().ticks() < tick)
                                     continue;
-                              seg1 = s;
+                              seg1 = ns;
                               break;
                               }
                         }
@@ -628,9 +640,9 @@ void Score::globalInsertChord(const Position& pos)
             Spanner* s = i.second;
             if (s->track() >= strack && s->track() < etrack) {
                   if (s->tick() >= stick && s->tick() < etick)
-                        s->undoChangeProperty(P_ID::SPANNER_TICK, s->tick() + ticks);
+                        s->undoChangeProperty(Pid::SPANNER_TICK, s->tick() + ticks);
                   else if (s->tick2() >= stick && s->tick2() < etick)
-                        s->undoChangeProperty(P_ID::SPANNER_TICKS, s->ticks() + ticks);
+                        s->undoChangeProperty(Pid::SPANNER_TICKS, s->ticks() + ticks);
                   }
             }
 

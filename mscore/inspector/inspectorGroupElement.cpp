@@ -1,7 +1,6 @@
 //=============================================================================
 //  MuseScore
 //  Music Composition & Notation
-//  $Id:$
 //
 //  Copyright (C) 2012 Werner Schweer and others
 //
@@ -82,8 +81,8 @@ void InspectorGroupElement::setColor()
       Score* score = inspector->el()->front()->score();
       score->startCmd();
       for (Element* e : *inspector->el()) {
-            if (e->getProperty(P_ID::COLOR) != QVariant(ge.color->color()))
-                  e->undoChangeProperty(P_ID::COLOR, ge.color->color());
+            if (e->getProperty(Pid::COLOR) != QVariant(ge.color->color()))
+                  e->undoChangeProperty(Pid::COLOR, ge.color->color());
             }
       score->endCmd();
       }
@@ -99,8 +98,8 @@ void InspectorGroupElement::setVisible()
       Score* score = inspector->el()->front()->score();
       score->startCmd();
       for (Element* e : *inspector->el()) {
-            if (!e->getProperty(P_ID::VISIBLE).toBool())
-                  e->undoChangeProperty(P_ID::VISIBLE, true);
+            if (!e->getProperty(Pid::VISIBLE).toBool())
+                  e->undoChangeProperty(Pid::VISIBLE, true);
             }
       score->endCmd();
       }
@@ -116,8 +115,8 @@ void InspectorGroupElement::setInvisible()
       Score* score = inspector->el()->front()->score();
       score->startCmd();
       for (Element* e : *inspector->el()) {
-            if (e->getProperty(P_ID::VISIBLE).toBool())
-                  e->undoChangeProperty(P_ID::VISIBLE, false);
+            if (e->getProperty(Pid::VISIBLE).toBool())
+                  e->undoChangeProperty(Pid::VISIBLE, false);
             }
       score->endCmd();
       }

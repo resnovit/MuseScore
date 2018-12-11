@@ -31,7 +31,7 @@ class MeasureBase;
 //   @P pagenumber int (read only)
 //---------------------------------------------------------
 
-class Page : public Element {
+class Page final : public Element {
       QList<System*> _systems;
       int _no;                      // page number
 #ifdef USE_BSP
@@ -54,7 +54,6 @@ class Page : public Element {
 
       virtual void write(XmlWriter&) const;
       virtual void read(XmlReader&);
-      virtual void styleChanged() override;
 
       void appendSystem(System* s);
 

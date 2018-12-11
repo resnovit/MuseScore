@@ -1,7 +1,6 @@
 #=============================================================================
 #  MuseScore
 #  Music Composition & Notation
-#  $Id:$
 #
 #  Copyright (C) 2011-2016 Werner Schweer
 #
@@ -24,6 +23,10 @@ if (OMR)
 set(OMR_SRC ${PROJECT_SOURCE_DIR}/omr/importpdf.cpp)
 endif (OMR)
 
+if (MSVC)
+   set(_all_h_file "${PROJECT_SOURCE_DIR}/all.h")
+endif (MSVC)
+
 QT5_ADD_RESOURCES(qrc_files ${PROJECT_SOURCE_DIR}/mtest/mtest.qrc
             ${PROJECT_SOURCE_DIR}/mscore/musescorefonts-MScore.qrc
             ${PROJECT_SOURCE_DIR}/mscore/musescorefonts-Gootville.qrc
@@ -37,9 +40,8 @@ add_library (testResources STATIC
       ${qrc_files}
       )
 
-add_library(
-      testutils STATIC
-      testutils.cpp
+set (SOURCE_LIB
+	  testutils.cpp
       ${PROJECT_SOURCE_DIR}/libmscore/mcursor.cpp
       ${PROJECT_SOURCE_DIR}/mscore/bb.cpp
       ${PROJECT_SOURCE_DIR}/mscore/capella.cpp
@@ -81,6 +83,8 @@ add_library(
       ${PROJECT_SOURCE_DIR}/mscore/exportmidi.cpp
       ${PROJECT_SOURCE_DIR}/mscore/importmxml.cpp               # Required by importxml.cpp
       ${PROJECT_SOURCE_DIR}/mscore/importmxmllogger.cpp         # Required by importxml.cpp
+      ${PROJECT_SOURCE_DIR}/mscore/importmxmlnoteduration.cpp   # Required by importxml.cpp
+      ${PROJECT_SOURCE_DIR}/mscore/importmxmlnotepitch.cpp      # Required by importxml.cpp
       ${PROJECT_SOURCE_DIR}/mscore/importmxmlpass1.cpp          # Required by importxml.cpp
       ${PROJECT_SOURCE_DIR}/mscore/importmxmlpass2.cpp          # Required by importxml.cpp
       ${PROJECT_SOURCE_DIR}/mscore/importxml.cpp
@@ -88,7 +92,9 @@ add_library(
       ${PROJECT_SOURCE_DIR}/mscore/musicxmlfonthandler.cpp
       ${PROJECT_SOURCE_DIR}/mscore/musicxmlsupport.cpp
       ${PROJECT_SOURCE_DIR}/mscore/qmlplugin.cpp
+      ${PROJECT_SOURCE_DIR}/mscore/preferences.cpp
       ${PROJECT_SOURCE_DIR}/mscore/shortcut.cpp
+      ${PROJECT_SOURCE_DIR}/mscore/stringutils.cpp
       ${PROJECT_SOURCE_DIR}/thirdparty/rtf2html/fmt_opts.cpp    # Required by capella.cpp and capxml.cpp
       ${PROJECT_SOURCE_DIR}/thirdparty/rtf2html/rtf2html.cpp    # Required by capella.cpp and capxml.cpp
       ${PROJECT_SOURCE_DIR}/thirdparty/rtf2html/rtf_keyword.cpp # Required by capella.cpp and capxml.cpp
@@ -97,9 +103,24 @@ add_library(
       ${PROJECT_SOURCE_DIR}/thirdparty/beatroot/AgentList.cpp       # Required by importmidi.cpp
       ${PROJECT_SOURCE_DIR}/thirdparty/beatroot/BeatTracker.cpp     # Required by importmidi.cpp
       ${PROJECT_SOURCE_DIR}/thirdparty/beatroot/Induction.cpp       # Required by importmidi.cpp
+      ${PROJECT_SOURCE_DIR}/mscore/extension.cpp # required by zerberus tests
       ${OMR_SRC}
       omr
-      )
+	)
+
+if (MSVC)
+	add_library(
+      testutils STATIC
+	  ${_all_h_file}
+	  ${PCH}
+	  ${SOURCE_LIB}
+	  )
+else (MSVC)
+	add_library(
+      testutils STATIC
+	  ${SOURCE_LIB}
+	  )
+endif (MSVC)
 
 add_executable(
       mtest
@@ -114,36 +135,30 @@ target_link_libraries(
 
 set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} ${Qt5Widgets_EXECUTABLE_COMPILE_FLAGS}")
 
-if (APPLE)
-   set(CMAKE_CXX_FLAGS_DEBUG   "-std=c++0x -fPIC -stdlib=libc++ -g -Wno-inconsistent-missing-override")
-   set(CMAKE_CXX_FLAGS_RELEASE "-std=c++0x -fPIC -stdlib=libc++ -O2 -DNDEBUG -DQT_NO_DEBUG -Wno-inconsistent-missing-override")
-else (APPLE)
-   if (MINGW)
-      # -mno-ms-bitfields see #22048
-      set(CMAKE_CXX_FLAGS_DEBUG   "-std=gnu++0x -mno-ms-bitfields -g")
-      set(CMAKE_CXX_FLAGS_RELEASE "-std=gnu++0x -mno-ms-bitfields -O2 -DNDEBUG -DQT_NO_DEBUG")
-   else (MINGW)
-      set(CMAKE_CXX_FLAGS_DEBUG   "-std=gnu++0x -fPIC -g")
-      set(CMAKE_CXX_FLAGS_RELEASE "-std=gnu++0x -fPIC -O2 -DNDEBUG -DQT_NO_DEBUG -DQT_NO_DEBUG_OUTPUT")
-   endif (MINGW)
-endif(APPLE)
-
-
 string(REPLACE ";" ";-I" INC "${QT_INCLUDES}")
 
 if (APPLE AND (CMAKE_VERSION VERSION_LESS "3.5.0"))
-set_target_properties (
-      testutils
-      PROPERTIES
-      COMPILE_FLAGS "-include all.h -D TESTROOT=\\\\\"${PROJECT_SOURCE_DIR}\\\\\" -g -Wall -Wextra"
-      )
+	set_target_properties (
+		  testutils
+		  PROPERTIES
+		  COMPILE_FLAGS "-include all.h -D TESTROOT=\\\\\"${PROJECT_SOURCE_DIR}\\\\\" -g -Wall -Wextra"
+		  )
 else (APPLE AND (CMAKE_VERSION VERSION_LESS "3.5.0"))
-set_target_properties (
-      testutils
-      PROPERTIES
-      COMPILE_FLAGS "-include all.h -D TESTROOT=\\\"${PROJECT_SOURCE_DIR}\\\" -g -Wall -Wextra"
-      )
+	if (MSVC)
+		set_target_properties (
+		  testutils
+		  PROPERTIES
+		  COMPILE_FLAGS "${PCH_INCLUDE}  /D TESTROOT=\\\"${PROJECT_SOURCE_DIR}\\\""
+		  )
+	else (MSVC)
+		set_target_properties (
+		  testutils
+		  PROPERTIES
+		  COMPILE_FLAGS "-include all.h -D TESTROOT=\\\"${PROJECT_SOURCE_DIR}\\\" -g -Wall -Wextra"
+		  )
+	endif (MSVC)
 endif (APPLE AND (CMAKE_VERSION VERSION_LESS "3.5.0"))
+
 
 #      COMPILE_FLAGS "-include all.h -I ${INC} -D TESTROOT=\\\"${PROJECT_SOURCE_DIR}\\\" -g -Wall -Wextra"
 
@@ -158,7 +173,7 @@ add_custom_target(reporthtml
       )
 
 subdirs (
-#        libmscore/compat114
+        libmscore/compat114
         libmscore/compat206
 #        libmscore/album            # obsolete
         libmscore/barline
@@ -181,12 +196,15 @@ subdirs (
         libmscore/join
         libmscore/keysig
         libmscore/layout
+        libmscore/layout_elements
         libmscore/links
         libmscore/parts
         libmscore/measure
         libmscore/midi                 # one disabled
 #        libmscore/midimapping
         libmscore/note
+        libmscore/readwriteundoreset
+        libmscore/remove
         libmscore/repeat
         libmscore/rhythmicGrouping
         libmscore/selectionfilter
@@ -199,12 +217,14 @@ subdirs (
         libmscore/transpose
         libmscore/tuplet
 #        libmscore/text        work in progress...
+        libmscore/utils
         importmidi
         capella
         biab
         musicxml
         guitarpro
         scripting
+        stringutils
 #        testoves
         zerberus/comments
         zerberus/envelopes
@@ -213,6 +233,7 @@ subdirs (
         zerberus/opcodeparse
         zerberus/inputControls
         zerberus/loop
+        testscript
         )
 
 

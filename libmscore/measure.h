@@ -29,7 +29,7 @@ class Beam;
 class Tuplet;
 class Staff;
 class Chord;
-class Text;
+class MeasureNumber;
 class ChordRest;
 class Score;
 class MuseScoreView;
@@ -51,7 +51,7 @@ class MStaff;
 enum class MeasureNumberMode : char {
       AUTO,       // show measure number depending on style
       SHOW,       // always show measure number
-      HIDE        // dont show measure number
+      HIDE        // don’t show measure number
       };
 
 //---------------------------------------------------------
@@ -62,7 +62,7 @@ enum class MeasureNumberMode : char {
 //   @P lastSegment     Segment       the last segment of the measure (read-only)
 //---------------------------------------------------------
 
-class Measure : public MeasureBase {
+class Measure final : public MeasureBase {
       std::vector<MStaff*>  _mstaves;
       SegmentList _segments;
       Measure* _mmRest;       // multi measure rest which replaces a measure range
@@ -90,6 +90,8 @@ class Measure : public MeasureBase {
       void fillGap(const Fraction& pos, const Fraction& len, int track, const Fraction& stretch);
       void computeMinWidth(Segment* s, qreal x, bool isSystemHeader);
 
+      void readVoice(XmlReader& e, int staffIdx, bool irregular);
+
    public:
       Measure(Score* = 0);
       Measure(const Measure&);
@@ -101,6 +103,7 @@ class Measure : public MeasureBase {
 
       void read(XmlReader&, int idx);
       void read(XmlReader& d) { read(d, 0); }
+      virtual void readAddConnector(ConnectorInfoReader* info, bool pasteMode) override;
       virtual void write(XmlWriter& xml) const override { Element::write(xml); }
       void write(XmlWriter&, int, bool writeSystemElements, bool forceTimeSig) const;
       void writeBox(XmlWriter&) const;
@@ -124,10 +127,9 @@ class Measure : public MeasureBase {
       void setStaffSlashStyle(int staffIdx, bool slashStyle);
       bool corrupted(int staffIdx) const;
       void setCorrupted(int staffIdx, bool val);
-      void setNoText(int staffIdx, Text*);
-      Text* noText(int staffIdx) const;
-      const Shape& staffShape(int staffIdx) const;
-      Shape& staffShape(int staffIdx);
+      void setNoText(int staffIdx, MeasureNumber*);
+      MeasureNumber* noText(int staffIdx) const;
+
       void createStaves(int);
 
       MeasureNumberMode measureNumberMode() const     { return _noMode;      }
@@ -153,7 +155,9 @@ class Measure : public MeasureBase {
       void setUserStretch(qreal v)              { _userStretch = v; }
 
       void stretchMeasure(qreal stretch);
+      int computeTicks();
       void layout2();
+      void layoutMeasureNumber();
 
       Chord* findChord(int tick, int track);
       ChordRest* findChordRest(int tick, int track);
@@ -230,9 +234,9 @@ class Measure : public MeasureBase {
       void setPlaybackCount(int val) { _playbackCount = val; }
       QRectF staffabbox(int staffIdx) const;
 
-      virtual QVariant getProperty(P_ID propertyId) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid) const override;
 
       bool hasMMRest() const        { return _mmRest != 0; }
       bool isMMRest() const         { return _mmRestCount > 0; }

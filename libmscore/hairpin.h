@@ -24,7 +24,8 @@ namespace Ms {
 class Score;
 class Hairpin;
 
-enum class HairpinType : char {
+enum class HairpinType : signed char {
+      INVALID = -1,
       CRESC_HAIRPIN,
       DECRESC_HAIRPIN,
       CRESC_LINE,
@@ -35,7 +36,7 @@ enum class HairpinType : char {
 //   @@ HairpinSegment
 //---------------------------------------------------------
 
-class HairpinSegment : public TextLineBaseSegment {
+class HairpinSegment final : public TextLineBaseSegment {
       bool    drawCircledTip;
       QPointF circledTip;
       qreal   circledTipRadius;
@@ -46,20 +47,19 @@ class HairpinSegment : public TextLineBaseSegment {
       virtual void updateGrips(EditData&) const override;
 
       virtual void draw(QPainter*) const override;
+      virtual Sid getPropertyStyle(Pid) const override;
+
+      bool acceptDrop(EditData&) const override;
+      Element* drop(EditData&);
 
    public:
-      HairpinSegment(Score* s);
+      HairpinSegment(Spanner* sp, Score* s);
       virtual HairpinSegment* clone() const override { return new HairpinSegment(*this);    }
       virtual ElementType type() const override      { return ElementType::HAIRPIN_SEGMENT; }
 
       Hairpin* hairpin() const                       { return (Hairpin*)spanner();          }
 
-      virtual QVariant getProperty(P_ID) const override;
-      virtual bool setProperty(P_ID, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID) const override;
-      virtual PropertyFlags propertyFlags(P_ID) const override;
-      virtual StyleIdx getPropertyStyle(P_ID) const override;
-      virtual void resetProperty(P_ID id) override;
+      virtual Element* propertyDelegate(Pid) override;
 
       virtual void layout() override;
       virtual Shape shape() const override;
@@ -72,17 +72,16 @@ class HairpinSegment : public TextLineBaseSegment {
 //   @P veloChange   int
 //---------------------------------------------------------
 
-class Hairpin : public TextLineBase {
-      HairpinType _hairpinType;
+class Hairpin final : public TextLineBase {
+      HairpinType _hairpinType { HairpinType::INVALID };
       int _veloChange;
       bool  _hairpinCircledTip;
       Dynamic::Range _dynRange;
-      PropertyFlags lineWidthStyle;
 
       Spatium _hairpinHeight;
       Spatium _hairpinContHeight;
-      PropertyFlags hairpinHeightStyle;
-      PropertyFlags hairpinContHeightStyle;
+
+      virtual Sid getPropertyStyle(Pid) const override;
 
    public:
       Hairpin(Score* s);
@@ -91,7 +90,6 @@ class Hairpin : public TextLineBase {
 
       HairpinType hairpinType() const           { return _hairpinType; }
       void setHairpinType(HairpinType val);
-      void undoSetHairpinType(HairpinType);
 
       Segment* segment() const                  { return (Segment*)parent(); }
       virtual void layout() override;
@@ -102,11 +100,9 @@ class Hairpin : public TextLineBase {
 
       int veloChange() const                    { return _veloChange; }
       void setVeloChange(int v)                 { _veloChange = v;    }
-      void undoSetVeloChange(int v);
 
       Dynamic::Range dynRange() const           { return _dynRange; }
       void setDynRange(Dynamic::Range t)        { _dynRange = t;    }
-      void undoSetDynRange(Dynamic::Range t);
 
       Spatium hairpinHeight() const             { return _hairpinHeight; }
       void setHairpinHeight(Spatium val)        { _hairpinHeight = val; }
@@ -117,20 +113,12 @@ class Hairpin : public TextLineBase {
       virtual void write(XmlWriter&) const override;
       virtual void read(XmlReader&) override;
 
-      virtual QVariant getProperty(P_ID id) const override;
-      virtual bool setProperty(P_ID propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(P_ID id) const override;
-      virtual PropertyFlags propertyFlags(P_ID id) const override;
-      virtual void resetProperty(P_ID id) override;
-      virtual StyleIdx getPropertyStyle(P_ID) const override;
+      virtual QVariant getProperty(Pid id) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant&) override;
+      virtual QVariant propertyDefault(Pid id) const override;
 
-      virtual void setYoff(qreal) override;
-      virtual void styleChanged() override;
-      virtual void reset() override;
       virtual QString accessibleInfo() const override;
       };
-
-extern Dynamic* lookupDynamic(Element* e);
 
 }     // namespace Ms
 

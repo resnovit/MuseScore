@@ -1,7 +1,6 @@
 //=============================================================================
 //  MusE Score
 //  Linux Music Score Editor
-//  $Id:$
 //
 //  Copyright (C) 2011-2016 Werner Schweer and others
 //
@@ -20,6 +19,7 @@
 
 #include "pianotools.h"
 #include "preferences.h"
+#include "libmscore/chord.h"
 
 namespace Ms {
 
@@ -181,6 +181,37 @@ void HPiano::releasePitch(int pitch)
       }
 
 //---------------------------------------------------------
+//   changeSelection
+//---------------------------------------------------------
+
+void HPiano::changeSelection(const Selection& selection)
+      {
+      for (PianoKeyItem* key : keys) {
+            key->setHighlighted(false);
+            key->setSelected(false);
+            }
+      for (Note* n : selection.noteList()) {
+            if (n->epitch() >= _firstKey && n->epitch() <= _lastKey)
+                  keys[n->epitch() - _firstKey]->setSelected(true);
+            for (Note* other : n->chord()->notes())
+                  if (other->epitch() >= _firstKey && other->epitch() <= _lastKey)
+                        keys[other->epitch() - _firstKey]->setHighlighted(true);
+            }
+      for (PianoKeyItem* key : keys)
+            key->update();
+      }
+
+// used when currentScore() is NULL; same as above except the for loop
+void HPiano::clearSelection()
+      {
+      for (PianoKeyItem* key : keys) {
+            key->setHighlighted(false);
+            key->setSelected(false);
+            key->update();
+            }
+      }
+
+//---------------------------------------------------------
 //   updateAllKeys
 //---------------------------------------------------------
 
@@ -211,7 +242,13 @@ PianoKeyItem::PianoKeyItem(HPiano* _piano, int p)
       piano = _piano;
       _pitch = p;
       _pressed = false;
+      _selected = false;
+      _highlighted = false;
       type = -1;
+
+      QString pitchNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+      QString text = pitchNames[_pitch % 12] + QString::number((_pitch / 12) - 1);
+      setToolTip(text);
       }
 
 //---------------------------------------------------------
@@ -347,18 +384,26 @@ void PianoKeyItem::paint(QPainter* p, const QStyleOptionGraphicsItem* /*o*/, QWi
       p->setRenderHint(QPainter::Antialiasing, true);
       p->setPen(QPen(Qt::black, .8));
       if (_pressed) {
-            QColor c(preferences.pianoHlColor);
+            QColor c(preferences.getColor(PREF_UI_PIANO_HIGHLIGHTCOLOR));
             c.setAlpha(180);
             p->setBrush(c);
             }
+      else if (_selected) {
+            QColor c(preferences.getColor(PREF_UI_PIANO_HIGHLIGHTCOLOR));
+            c.setAlpha(100);
+            p->setBrush(c);
+            }
+      else if (_highlighted)
+            p->setBrush(type >= 7 ? QColor(125, 125, 125) : QColor(200, 200, 200));
       else
             p->setBrush(type >= 7 ? Qt::black : Qt::white);
       p->drawPath(path());
-      if (_pitch == 60) {
-            QFont f("FreeSerif", 8);
+      if (_pitch % 12 == 0) {
+            QFont f("FreeSerif", 6);
             p->setFont(f);
+            QString text = "C" + QString::number((_pitch / 12) - 1);
             p->drawText(QRectF(KEY_WIDTH / 2, KEY_HEIGHT - 8, 0, 0),
-               Qt::AlignCenter | Qt::TextDontClip, "c'");
+               Qt::AlignCenter | Qt::TextDontClip, text);
             }
       }
 
@@ -483,5 +528,18 @@ bool HPiano::gestureEvent(QGestureEvent *event)
             }
       return true;
       }
-}
 
+//---------------------------------------------------------
+//   changeSelection
+//---------------------------------------------------------
+
+void PianoTools::changeSelection(const Selection& selection)
+      {
+      _piano->changeSelection(selection);
+      }
+
+void PianoTools::clearSelection()
+      {
+      _piano->clearSelection();
+      }
+}

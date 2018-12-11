@@ -63,7 +63,7 @@ struct TextSegment {
 struct RenderAction;
 class HDegree;
 
-class Harmony : public Text {
+class Harmony final : public TextBase {
       int _rootTpc;                       // root note for chord
       int _baseTpc;                       // bass note or chord base; used for "slash" chords
                                           // or notation of base note in chord
@@ -88,20 +88,24 @@ class Harmony : public Text {
 
       void determineRootBaseSpelling();
       virtual void draw(QPainter*) const override;
+      virtual void drawEditMode(QPainter* p, EditData& ed) override;
       void render(const QString&, qreal&, qreal&);
       void render(const QList<RenderAction>& renderList, qreal&, qreal&, int tpc, NoteSpellingType noteSpelling = NoteSpellingType::STANDARD, NoteCaseType noteCase = NoteCaseType::AUTO);
       virtual void styleChanged() override     { render(); }
+      virtual Sid getPropertyStyle(Pid) const override;
 
    public:
       Harmony(Score* = 0);
       Harmony(const Harmony&);
       ~Harmony();
       virtual Harmony* clone() const override     { return new Harmony(*this); }
-      virtual ElementType type() const override { return ElementType::HARMONY; }
-      virtual bool systemFlag() const override    { return false;  }
+      virtual ElementType type() const override   { return ElementType::HARMONY; }
 
-      void setId(int d)                        { _id = d; }
-      int id() const                           { return _id;           }
+      void setId(int d)                        { _id = d;       }
+      int id() const                           { return _id;    }
+
+      void setBaseCase(NoteCaseType c)         { _baseCase = c; }
+      void setRootCase(NoteCaseType c)         { _rootCase = c; }
 
       bool leftParen() const                   { return _leftParen;    }
       bool rightParen() const                  { return _rightParen;   }
@@ -117,12 +121,8 @@ class Harmony : public Text {
       void determineRootBaseSpelling(NoteSpellingType& rootSpelling, NoteCaseType& rootCase,
          NoteSpellingType& baseSpelling, NoteCaseType& baseCase);
 
-      virtual void textChanged() override;
+      void textChanged();
       virtual void layout() override;
-
-      const QRectF& bboxtight() const          { return _tbbox;        }
-      QRectF& bboxtight()                      { return _tbbox;        }
-      void setbboxtight(const QRectF& r) const { _tbbox = r;           }
 
       virtual bool isEditable() const override { return true; }
       virtual void startEdit(EditData&) override;
@@ -155,7 +155,7 @@ class Harmony : public Text {
       const QString& extensionName() const;
 
       QString xmlKind() const;
-      QString xmlText() const;
+      QString musicXmlText() const;
       QString xmlSymbols() const;
       QString xmlParens() const;
       QStringList xmlDegrees() const;
@@ -178,7 +178,9 @@ class Harmony : public Text {
       virtual bool acceptDrop(EditData&) const override;
       virtual Element* drop(EditData&) override;
 
-      virtual QVariant propertyDefault(P_ID id) const override;
+      virtual QVariant getProperty(Pid propertyId) const override;
+      virtual bool setProperty(Pid propertyId, const QVariant& v) override;
+      virtual QVariant propertyDefault(Pid id) const override;
       };
 
 }     // namespace Ms

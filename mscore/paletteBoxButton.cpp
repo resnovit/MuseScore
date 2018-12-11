@@ -13,6 +13,7 @@
 #include "paletteBoxButton.h"
 #include "palette.h"
 #include "preferences.h"
+#include "tourhandler.h"
 
 namespace Ms {
 
@@ -52,6 +53,8 @@ void PaletteBoxButton::contextMenuEvent(QContextMenuEvent* event)
       QAction* actionEdit       = menu.addAction(tr("Enable Editing"));
       actionEdit->setCheckable(true);
       actionEdit->setChecked(!palette->readOnly());
+      if (palette->isFilterActive())
+            actionEdit->setVisible(false);
 
       bool _systemPalette = palette->systemPalette();
       actionProperties->setDisabled(_systemPalette);
@@ -114,13 +117,15 @@ void PaletteBoxButton::changeEvent(QEvent* ev)
 
 void PaletteBoxButton::showPalette(bool visible)
       {
-      if (visible && preferences.singlePalette) {
+      if (visible && preferences.getBool(PREF_APP_USESINGLEPALETTE)) {
             // close all palettes
             emit closeAll();
             }
       palette->setVisible(visible);
       setChecked(visible);
       setArrowType(visible ? Qt::DownArrow : Qt::RightArrow );
+      if (visible)
+            TourHandler::startTour("show-palette");
       }
 
 //---------------------------------------------------------
